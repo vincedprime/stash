@@ -43,10 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showPanelWindow() {
         guard let model else { return }
         model.query = ""
+        model.selectedID = nil
         model.reload()
         model.isPresented = true
         if panel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 610, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash"
             panel.isFloatingPanel = true
             panel.hidesOnDeactivate = true
