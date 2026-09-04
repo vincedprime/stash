@@ -30,6 +30,7 @@
       ol { margin: 0; padding-left: 22px; }
       li + li { margin-top: 10px; }
       code { padding: 2px 5px; border-radius: 4px; background: #2b2430; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+      section > p > code { display: block; overflow-x: auto; padding: 13px; white-space: nowrap; }
       footer { padding: 30px 0 46px; color: #938b99; font-size: 13px; }
       @media (max-width: 650px) { .hero { padding: 64px 0; } .features { grid-template-columns: 1fr; } }
     </style>
@@ -63,10 +64,11 @@
         <h2>Install</h2>
         <ol>
           <li>Download and open <strong>Stash.dmg</strong>.</li>
-          <li>Drag <strong>Stash.app</strong to your Applications folder.</li>
-          <li>Open Stash. If macOS blocks the unsigned app, Control-click it, choose <strong>Open</strong>, then confirm.</li>
-          <li>Click the Stash menu-bar icon or press <code>⌥Space</code> to search clipboard history.</li>
+          <li>Open <strong>Terminal</strong>, then paste and run this command:</li>
         </ol>
+        <p><code>cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code></p>
+        <p class="note">This copies Stash to Applications, removes the download quarantine for this unsigned build, and opens it. A managed Mac may require administrator approval.</p>
+        <p>Then click the Stash menu-bar icon or press <code>⌥Space</code> to search clipboard history.</p>
       </section>
 
       <footer>Stash is open source and stores supported clipboard history locally on your Mac.</footer>

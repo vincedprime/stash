@@ -6,6 +6,18 @@ Stash is a native, local-only macOS clipboard manager. It saves text and images 
 
 Download it from release or from here - https://vincedprime.github.io/stash/
 
+## Install the download
+
+Stash is currently an unsigned build. After downloading and opening `Stash.dmg`, use Terminal to install it instead of dragging it in Finder:
+
+```sh
+cp -R "/Volumes/Stash/Stash.app" "/Applications/"
+xattr -dr com.apple.quarantine "/Applications/Stash.app"
+open "/Applications/Stash.app"
+```
+
+This copies Stash to Applications, clears macOS’s download quarantine for this local build, and opens it. If your Mac is managed and blocks the command, its administrator must allow the app.
+
 ## Set up locally
 
 ### Pre-requisites 
