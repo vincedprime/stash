@@ -84,46 +84,44 @@ struct HistoryView: View {
             Divider()
 
             HStack(spacing: 0) {
-                List(selection: $model.selectedID) {
-                    ForEach(model.entries) { entry in
-                        HStack(spacing: 10) {
-                            if entry.kind == .image, let path = entry.imagePath,
-                               let image = NSImage(contentsOf: model.storeImageURL(path)) {
-                                Image(nsImage: image).resizable().scaledToFit().frame(width: 44, height: 32)
+                ScrollViewReader { proxy in
+                    List(selection: $model.selectedID) {
+                        ForEach(model.entries) { entry in
+                            HStack(spacing: 10) {
+                                if entry.kind == .image, let path = entry.imagePath,
+                                   let image = NSImage(contentsOf: model.storeImageURL(path)) {
+                                    Image(nsImage: image).resizable().scaledToFit().frame(width: 44, height: 32)
+                                }
+                                VStack(alignment: .leading) {
+                                    Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
+                                        .lineLimit(2)
+                                    Text(entry.isPinned ? "Pinned" : entry.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button { model.togglePin(entry) } label: { Image(systemName: entry.isPinned ? "pin.fill" : "pin") }
+                                    .buttonStyle(.borderless)
+                                Button { model.delete(entry) } label: { Image(systemName: "trash") }
+                                    .buttonStyle(.borderless)
                             }
-                            VStack(alignment: .leading) {
-                                Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
-                                    .lineLimit(2)
-                                Text(entry.isPinned ? "Pinned" : entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button { model.togglePin(entry) } label: { Image(systemName: entry.isPinned ? "pin.fill" : "pin") }
-                                .buttonStyle(.borderless)
-                            Button { model.delete(entry) } label: { Image(systemName: "trash") }
-                                .buttonStyle(.borderless)
+                            .tag(entry.id)
+                            .id(entry.id)
+                            .contentShape(Rectangle())
+                            .background(model.selectedID == entry.id ? Color.accentColor.opacity(0.20) : Color.clear)
+                            .onTapGesture { model.selectedID = entry.id }
+                            .onTapGesture(count: 2) { model.restore(entry) }
                         }
-                        .tag(entry.id)
-                        .contentShape(Rectangle())
-                        .background(model.selectedID == entry.id ? Color.accentColor.opacity(0.20) : Color.clear)
-                        .onTapGesture { model.selectedID = entry.id }
-                        .onTapGesture(count: 2) { model.restore(entry) }
+                    }
+                    .listStyle(.plain)
+                    .frame(width: 350)
+                    .onChange(of: model.selectedID) { _, selectedID in
+                        if let selectedID { proxy.scrollTo(selectedID, anchor: .center) }
                     }
                 }
-                .listStyle(.plain)
-                .frame(width: 350)
 
-                if let entry = model.selectedEntry, entry.kind == .image,
-                   let path = entry.imagePath,
-                   let image = NSImage(contentsOf: model.storeImageURL(path)) {
-                    Divider()
-                    VStack {
-                        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
-                        Text("Selected image").font(.caption).foregroundStyle(.secondary)
-                    }
-                    .padding(12)
+                Divider()
+                ImagePreview(entry: model.selectedEntry, store: model.store)
                     .frame(width: 300)
-                }
             }
 
             Divider()
@@ -158,4 +156,26 @@ struct HistoryView: View {
 
 extension HistoryModel {
     func storeImageURL(_ path: String) -> URL { store.imageURL(path) }
+}
+
+private struct ImagePreview: View {
+    let entry: ClipboardEntry?
+    let store: ClipboardStore
+
+    var body: some View {
+        VStack {
+            if let entry, entry.kind == .image,
+               let path = entry.imagePath,
+               let image = NSImage(contentsOf: store.imageURL(path)) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView("Image preview", systemImage: "photo", description: Text("Select an image to preview it."))
+            }
+            Text("Selected image").font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(12)
+    }
 }
