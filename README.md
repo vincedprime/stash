@@ -86,8 +86,8 @@ This copies Stash to Applications, clears macOS’s download quarantine for this
 To stop launch-at-login behavior:
 
 ```sh
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.vinay.stash.plist
-rm ~/Library/LaunchAgents/com.vinay.stash.plist
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.vinylstack.stash.login-item.plist
+rm ~/Library/LaunchAgents/com.vinylstack.stash.login-item.plist
 ```
 
 To remove stored clipboard history, delete `~/Library/Application Support/Stash`. To remove the app, delete `~/Applications/Stash.app`.
