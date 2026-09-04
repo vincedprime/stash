@@ -41,7 +41,17 @@ final class HistoryModel: ObservableObject {
     func setPaused(_ paused: Bool) { self.paused = paused; onPauseChanged?(paused) }
     func restore(_ entry: ClipboardEntry) { store.restore(entry); onRestore?(entry) }
     func togglePin(_ entry: ClipboardEntry) { store.setPinned(entry, pinned: !entry.isPinned); reload() }
-    func delete(_ entry: ClipboardEntry) { store.delete(entry); reload() }
+    func delete(_ entry: ClipboardEntry) {
+        let deletedIndex = entries.firstIndex { $0.id == entry.id }
+        let deletedWasSelected = selectedID == entry.id
+        store.delete(entry)
+        reload()
+
+        // Keep keyboard flow contiguous: select the item that replaced the deleted
+        // row, or the preceding row when the deleted item was the last one.
+        guard deletedWasSelected, let deletedIndex, !entries.isEmpty else { return }
+        selectedID = entries[min(deletedIndex, entries.count - 1)].id
+    }
     func clear() { store.clear(); reload() }
 }
 
@@ -161,7 +171,8 @@ struct HistoryView: View {
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .background(KeyEventMonitor { event in
-            let isOptionOnly = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .option
+            let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            let isOptionOnly = modifiers == .option
             if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_X) {
                 model.deleteSelection()
                 return true
@@ -174,7 +185,9 @@ struct HistoryView: View {
                 model.cycleFilter()
                 return true
             }
-            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else { return false }
+            // Keep editing shortcuts in the search field intact, but always own
+            // unmodified list navigation even while that field has focus.
+            guard modifiers.isEmpty else { return false }
             switch event.keyCode {
             case UInt16(kVK_UpArrow): model.moveSelection(by: -1); return true
             case UInt16(kVK_DownArrow): model.moveSelection(by: 1); return true
