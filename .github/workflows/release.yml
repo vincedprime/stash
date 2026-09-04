@@ -1,0 +1,35 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Stash
+        run: scripts/build-app.sh
+
+      - name: Create and verify disk image
+        run: |
+          mkdir -p release
+          hdiutil create -volname Stash -srcfolder "$HOME/Applications/Stash.app" -ov -format UDZO release/Stash.dmg
+          hdiutil verify release/Stash.dmg
+          shasum -a 256 release/Stash.dmg > release/Stash.dmg.sha256
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            release/Stash.dmg \
+            release/Stash.dmg.sha256 \
+            --title "Stash ${GITHUB_REF_NAME}" \
+            --generate-notes
