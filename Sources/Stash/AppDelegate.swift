@@ -16,9 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             model.onRestore = { [weak self] _ in self?.hidePanel() }
             self.model = model
             let monitor = ClipboardMonitor(store: store)
-            model.onPauseChanged = { [weak monitor, weak self] paused in
+            model.onPauseChanged = { [weak monitor] paused in
                 monitor?.isPaused = paused
-                self?.statusItem.menu?.items[2].title = paused ? "Resume Recording" : "Pause Recording"
             }
             monitor.onSave = { [weak model] result in
                 switch result { case .saved: model?.reload(); case .full: model?.message = "History is full. Delete or unpin items to resume recording."; default: break }
@@ -36,27 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func makeStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "archivebox", accessibilityDescription: "Stash clipboard history")
-        let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Show History", action: #selector(showPanel), keyEquivalent: ""))
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Pause Recording", action: #selector(togglePause), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: shortcutTitle, action: #selector(toggleShortcut), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Quit Stash", action: #selector(quit), keyEquivalent: "q"))
-        menu.items.forEach { $0.target = self }
-        statusItem.menu = menu
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(togglePanel)
     }
 
-    @objc private func showPanel() { showPanelWindow() }
-    @objc private func togglePause() { guard let model, let monitor else { return }; model.paused.toggle(); monitor.isPaused = model.paused; statusItem.menu?.items[2].title = model.paused ? "Resume Recording" : "Pause Recording" }
-    @objc private func toggleShortcut() {
-        let next = !UserDefaults.standard.bool(forKey: "optionShiftShortcut")
-        UserDefaults.standard.set(next, forKey: "optionShiftShortcut")
-        _ = shortcut?.register(optionShift: next)
-        statusItem.menu?.items[3].title = shortcutTitle
-    }
-    @objc private func quit() { NSApplication.shared.terminate(nil) }
-    private var shortcutTitle: String { UserDefaults.standard.bool(forKey: "optionShiftShortcut") ? "Shortcut: Option-Shift-Space" : "Shortcut: Option-Space" }
-    private func togglePanel() { panel?.isVisible == true ? hidePanel() : showPanelWindow() }
+    @objc private func togglePanel() { panel?.isVisible == true ? hidePanel() : showPanelWindow() }
     private func showPanelWindow() {
         guard let model else { return }
         model.query = ""
