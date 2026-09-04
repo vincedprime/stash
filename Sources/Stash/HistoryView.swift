@@ -113,10 +113,11 @@ struct HistoryView: View {
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                 Spacer()
-                                Button { model.togglePin(entry) } label: { Image(systemName: entry.isPinned ? "pin.fill" : "pin") }
-                                    .buttonStyle(.borderless)
-                                Button { model.delete(entry) } label: { Image(systemName: "trash") }
-                                    .buttonStyle(.borderless)
+                                if entry.isPinned {
+                                    Image(systemName: "pin.fill")
+                                        .foregroundStyle(.secondary)
+                                        .accessibilityLabel("Pinned")
+                                }
                             }
                             .tag(entry.id)
                             .id(entry.id)
@@ -218,22 +219,20 @@ private struct EntryViewer: View {
                         Text(entry.kind == .image ? "Image" : "Text").font(.headline)
                         Spacer()
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Copied · \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                        Text("From · \(entry.sourceApp ?? "Unknown app")")
-                        Text("\(sizeDescription(for: entry)) · \(entry.copyCount == 1 ? "Copied once" : "Copied \(entry.copyCount) times")")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    Divider()
                     if entry.kind == .image, let path = entry.imagePath,
                        let image = NSImage(contentsOf: store.imageURL(path)) {
-                        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ScrollView {
                             Text(entry.text ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .frame(maxHeight: .infinity)
                     }
+                    Divider()
+                    metadata(for: entry)
                 }
             } else {
                 ContentUnavailableView("Clipboard item", systemImage: "doc.on.clipboard", description: Text("Select an item to see its details."))
@@ -247,5 +246,52 @@ private struct EntryViewer: View {
         guard entry.kind == .text, let text = entry.text else { return bytes }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).count
         return "\(text.count) characters · \(lines) \(lines == 1 ? "line" : "lines") · \(bytes)"
+    }
+
+    @ViewBuilder
+    private func metadata(for entry: ClipboardEntry) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            metadataRow("Copied", entry.createdAt.formatted(date: .abbreviated, time: .shortened))
+            metadataRow("From", entry.sourceApp ?? "Unknown app")
+            metadataRow("Size", sizeDescription(for: entry))
+            metadataRow("Copies", entry.copyCount == 1 ? "Once" : "\(entry.copyCount) times")
+
+            if entry.kind == .text {
+                metadataRow("Language", entry.detectedLanguage ?? "Unknown")
+                metadataRow("Kind", entry.contentKind ?? "Text")
+                metadataRow("Links", "\(entry.linkCount ?? 0)")
+            } else {
+                if let width = entry.pixelWidth, let height = entry.pixelHeight, width > 0, height > 0 {
+                    metadataRow("Dimensions", "\(width) × \(height) px")
+                    metadataRow("Aspect ratio", aspectRatio(width: width, height: height))
+                }
+                metadataRow("Format", entry.imageFormat ?? "Unknown")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func metadataRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label).frame(width: 76, alignment: .leading)
+            Text(value).foregroundStyle(.primary)
+        }
+    }
+
+    private func aspectRatio(width: Int, height: Int) -> String {
+        let divisor = greatestCommonDivisor(width, height)
+        return "\(width / divisor):\(height / divisor)"
+    }
+
+    private func greatestCommonDivisor(_ left: Int, _ right: Int) -> Int {
+        var left = left
+        var right = right
+        while right != 0 {
+            let remainder = left % right
+            left = right
+            right = remainder
+        }
+        return left
     }
 }

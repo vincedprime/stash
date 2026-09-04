@@ -21,11 +21,19 @@ final class ClipboardStore {
         CREATE TABLE IF NOT EXISTS entries (
           id TEXT PRIMARY KEY, created_at REAL NOT NULL, kind TEXT NOT NULL,
           text TEXT, image_path TEXT, byte_count INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0,
-          source_app TEXT, copy_count INTEGER NOT NULL DEFAULT 1
+          source_app TEXT, copy_count INTEGER NOT NULL DEFAULT 1,
+          detected_language TEXT, content_kind TEXT, link_count INTEGER,
+          pixel_width INTEGER, pixel_height INTEGER, image_format TEXT
         ); CREATE INDEX IF NOT EXISTS entries_created ON entries(created_at DESC);
         """)
         try? execute("ALTER TABLE entries ADD COLUMN source_app TEXT")
         try? execute("ALTER TABLE entries ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 1")
+        try? execute("ALTER TABLE entries ADD COLUMN detected_language TEXT")
+        try? execute("ALTER TABLE entries ADD COLUMN content_kind TEXT")
+        try? execute("ALTER TABLE entries ADD COLUMN link_count INTEGER")
+        try? execute("ALTER TABLE entries ADD COLUMN pixel_width INTEGER")
+        try? execute("ALTER TABLE entries ADD COLUMN pixel_height INTEGER")
+        try? execute("ALTER TABLE entries ADD COLUMN image_format TEXT")
     }
 
     enum StoreError: Error { case open, sql, imageRead }
@@ -36,7 +44,7 @@ final class ClipboardStore {
         if let kind = filter.kind { clauses.append("kind = '\(kind.rawValue)'") }
         if !searchText.isEmpty { clauses.append("text LIKE ?") }
         let whereClause = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
-        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
+        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,detected_language,content_kind,link_count,pixel_width,pixel_height,image_format FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
         if !searchText.isEmpty { sqlite3_bind_text(statement, 1, "%\(searchText)%", -1, SQLITE_TRANSIENT) }
@@ -49,24 +57,24 @@ final class ClipboardStore {
         scalarInt("SELECT COALESCE(SUM(byte_count), 0) FROM entries")
     }
 
-    func saveText(_ text: String, sourceApp: String?) -> SaveResult {
+    func saveText(_ text: String, sourceApp: String?, metadata: TextMetadata) -> SaveResult {
         guard !text.isEmpty else { return .duplicate }
         if let last = entries().first, last.kind == .text, last.text == text {
-            refreshDuplicate(last, sourceApp: sourceApp)
+            refreshDuplicate(last, sourceApp: sourceApp, textMetadata: metadata, imageMetadata: nil)
             return .saved
         }
-        return insert(kind: .text, text: text, imageData: nil, sourceApp: sourceApp)
+        return insert(kind: .text, text: text, imageData: nil, sourceApp: sourceApp, textMetadata: metadata, imageMetadata: nil)
     }
 
-    func saveImage(_ image: NSImage, sourceApp: String?) -> SaveResult {
+    func saveImage(_ image: NSImage, sourceApp: String?, metadata: ImageMetadata) -> SaveResult {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),
               let png = bitmap.representation(using: .png, properties: [:]) else { return .duplicate }
         if let last = entries().first, last.kind == .image, last.byteCount == png.count {
-            refreshDuplicate(last, sourceApp: sourceApp)
+            refreshDuplicate(last, sourceApp: sourceApp, textMetadata: nil, imageMetadata: metadata)
             return .saved
         }
-        return insert(kind: .image, text: nil, imageData: png, sourceApp: sourceApp)
+        return insert(kind: .image, text: nil, imageData: png, sourceApp: sourceApp, textMetadata: nil, imageMetadata: metadata)
     }
 
     func setPinned(_ entry: ClipboardEntry, pinned: Bool) {
@@ -95,7 +103,7 @@ final class ClipboardStore {
 
     func imageURL(_ path: String) -> URL { root.appendingPathComponent(path) }
 
-    private func insert(kind: EntryKind, text: String?, imageData: Data?, sourceApp: String?) -> SaveResult {
+    private func insert(kind: EntryKind, text: String?, imageData: Data?, sourceApp: String?, textMetadata: TextMetadata?, imageMetadata: ImageMetadata?) -> SaveResult {
         let bytes = imageData?.count ?? (text?.utf8.count ?? 0)
         guard bytes <= Self.maximumBytes else { return .full }
         makeRoom(for: bytes)
@@ -107,15 +115,16 @@ final class ClipboardStore {
             do { try imageData.write(to: root.appendingPathComponent(relativePath!), options: .atomic) }
             catch { return .full }
         } else { relativePath = nil }
-        executeQuietly("INSERT INTO entries(id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count) VALUES(?,?,?,?,?,?,0,?,1)", bindings: [
-            .text(id.uuidString), .double(Date().timeIntervalSince1970), .text(kind.rawValue), .optionalText(text), .optionalText(relativePath), .int(bytes), .optionalText(sourceApp)
+        executeQuietly("INSERT INTO entries(id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,detected_language,content_kind,link_count,pixel_width,pixel_height,image_format) VALUES(?,?,?,?,?,?,0,?,1,?,?,?,?,?,?)", bindings: [
+            .text(id.uuidString), .double(Date().timeIntervalSince1970), .text(kind.rawValue), .optionalText(text), .optionalText(relativePath), .int(bytes), .optionalText(sourceApp),
+            .optionalText(textMetadata?.detectedLanguage), .optionalText(textMetadata?.contentKind), .optionalInt(textMetadata?.linkCount), .optionalInt(imageMetadata?.pixelWidth), .optionalInt(imageMetadata?.pixelHeight), .optionalText(imageMetadata?.imageFormat)
         ])
         return .saved
     }
 
-    private func refreshDuplicate(_ entry: ClipboardEntry, sourceApp: String?) {
-        executeQuietly("UPDATE entries SET created_at = ?, source_app = ?, copy_count = copy_count + 1 WHERE id = ?", bindings: [
-            .double(Date().timeIntervalSince1970), .optionalText(sourceApp), .text(entry.id.uuidString)
+    private func refreshDuplicate(_ entry: ClipboardEntry, sourceApp: String?, textMetadata: TextMetadata?, imageMetadata: ImageMetadata?) {
+        executeQuietly("UPDATE entries SET created_at = ?, source_app = ?, copy_count = copy_count + 1, detected_language = ?, content_kind = ?, link_count = ?, pixel_width = ?, pixel_height = ?, image_format = ? WHERE id = ?", bindings: [
+            .double(Date().timeIntervalSince1970), .optionalText(sourceApp), .optionalText(textMetadata?.detectedLanguage), .optionalText(textMetadata?.contentKind), .optionalInt(textMetadata?.linkCount), .optionalInt(imageMetadata?.pixelWidth), .optionalInt(imageMetadata?.pixelHeight), .optionalText(imageMetadata?.imageFormat), .text(entry.id.uuidString)
         ])
     }
 
@@ -128,7 +137,7 @@ final class ClipboardStore {
     }
 
     private var statement: OpaquePointer?
-    private enum Binding { case text(String), optionalText(String?), int(Int), double(Double) }
+    private enum Binding { case text(String), optionalText(String?), int(Int), optionalInt(Int?), double(Double) }
     private func execute(_ sql: String) throws {
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { throw StoreError.sql }
     }
@@ -144,6 +153,8 @@ final class ClipboardStore {
         case .optionalText(let value):
             if let value { sqlite3_bind_text(statement, index, value, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(statement, index) }
         case .int(let value): sqlite3_bind_int64(statement, index, sqlite3_int64(value))
+        case .optionalInt(let value):
+            if let value { sqlite3_bind_int64(statement, index, sqlite3_int64(value)) } else { sqlite3_bind_null(statement, index) }
         case .double(let value): sqlite3_bind_double(statement, index, value)
         }
     }
@@ -158,6 +169,11 @@ final class ClipboardStore {
         return ClipboardEntry(id: id, createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)), kind: kind,
           text: sqlite3_column_text(statement, 3).map { String(cString: $0) }, imagePath: sqlite3_column_text(statement, 4).map { String(cString: $0) },
           byteCount: Int(sqlite3_column_int64(statement, 5)), isPinned: sqlite3_column_int(statement, 6) != 0,
-          sourceApp: sqlite3_column_text(statement, 7).map { String(cString: $0) }, copyCount: Int(sqlite3_column_int64(statement, 8)))
+          sourceApp: sqlite3_column_text(statement, 7).map { String(cString: $0) }, copyCount: Int(sqlite3_column_int64(statement, 8)),
+          detectedLanguage: sqlite3_column_text(statement, 9).map { String(cString: $0) }, contentKind: sqlite3_column_text(statement, 10).map { String(cString: $0) },
+          linkCount: sqlite3_column_type(statement, 11) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(statement, 11)),
+          pixelWidth: sqlite3_column_type(statement, 12) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(statement, 12)),
+          pixelHeight: sqlite3_column_type(statement, 13) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(statement, 13)),
+          imageFormat: sqlite3_column_text(statement, 14).map { String(cString: $0) })
     }
 }
