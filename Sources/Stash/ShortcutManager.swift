@@ -21,16 +21,16 @@ final class ShortcutManager {
         }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &handler)
     }
 
-    func register(openOptionShift: Bool, recordOptionShift: Bool) -> Bool {
+    func register(open: HotKeyBinding, record: HotKeyBinding) -> Bool {
         unregister()
         let openID = EventHotKeyID(signature: OSType(0x53544153), id: 1) // STAS
         let recordID = EventHotKeyID(signature: OSType(0x53544153), id: 2)
-        let openModifiers = optionKey | (openOptionShift ? shiftKey : 0)
-        let recordModifiers = optionKey | (recordOptionShift ? shiftKey : 0)
+        let openModifiers = open.modifiers
+        let recordModifiers = record.modifiers
         var openKey: EventHotKeyRef?
         var recordKey: EventHotKeyRef?
-        guard RegisterEventHotKey(UInt32(kVK_Space), UInt32(openModifiers), openID, GetApplicationEventTarget(), 0, &openKey) == noErr,
-              RegisterEventHotKey(UInt32(kVK_ANSI_R), UInt32(recordModifiers), recordID, GetApplicationEventTarget(), 0, &recordKey) == noErr,
+        guard RegisterEventHotKey(open.keyCode, openModifiers, openID, GetApplicationEventTarget(), 0, &openKey) == noErr,
+              RegisterEventHotKey(record.keyCode, recordModifiers, recordID, GetApplicationEventTarget(), 0, &recordKey) == noErr,
               let openKey, let recordKey else {
             if let openKey { UnregisterEventHotKey(openKey) }
             return false
