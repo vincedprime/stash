@@ -71,7 +71,6 @@ struct KeyEventMonitor: NSViewRepresentable {
 struct HistoryView: View {
     @ObservedObject var model: HistoryModel
     @FocusState private var searchIsFocused: Bool
-    @State private var showsShortcuts = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -98,7 +97,7 @@ struct HistoryView: View {
                             HStack(spacing: 10) {
                                 if entry.kind == .image, let path = entry.imagePath,
                                    let image = NSImage(contentsOf: model.storeImageURL(path)) {
-                                    Image(nsImage: image).resizable().scaledToFit().frame(width: 36, height: 36)
+                                    Image(nsImage: image).resizable().scaledToFit().frame(width: 28, height: 28)
                                 }
                                 Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
                                     .lineLimit(1)
@@ -114,7 +113,7 @@ struct HistoryView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { model.selectedID = entry.id }
                             .onTapGesture(count: 2) { model.restore(entry) }
-                            .frame(height: 46)
+                            .frame(height: 38)
                         }
                     }
                     .listStyle(.plain)
@@ -126,7 +125,7 @@ struct HistoryView: View {
 
                 Divider()
                 EntryViewer(entry: model.selectedEntry, store: model.store)
-                    .frame(width: 240)
+                    .frame(width: 320)
             }
 
             Divider()
@@ -144,24 +143,21 @@ struct HistoryView: View {
             .font(.caption)
             .padding(10)
             Divider()
-            DisclosureGroup("Keyboard shortcuts", isExpanded: $showsShortcuts) {
-                HStack(spacing: 14) {
-                    Text("↑↓ Navigate")
-                    Text("↩ Copy")
-                    Text("⌥P Pin")
-                    Text("⌥X Delete")
-                    Text("⌥Q Filter")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.top, 6)
+            HStack(spacing: 14) {
+                Text("Shortcuts")
+                Text("↑↓ Navigate")
+                Text("↩ Copy")
+                Text("⌥P Pin")
+                Text("⌥X Delete")
+                Text("⌥Q Filter")
             }
             .font(.caption)
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
         }
-        .frame(width: 660, height: 540)
+        .frame(width: 740, height: 540)
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .background(KeyEventMonitor { event in
@@ -178,6 +174,7 @@ struct HistoryView: View {
                 model.cycleFilter()
                 return true
             }
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else { return false }
             switch event.keyCode {
             case UInt16(kVK_UpArrow): model.moveSelection(by: -1); return true
             case UInt16(kVK_DownArrow): model.moveSelection(by: 1); return true
