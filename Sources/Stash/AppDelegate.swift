@@ -7,6 +7,11 @@ final class HistoryPanel: NSPanel {
     override func resignMain() { super.resignMain(); onResignKey?() }
 }
 
+final class TransientPanel: NSPanel {
+    override func resignKey() { super.resignKey(); orderOut(nil) }
+    override func resignMain() { super.resignMain(); orderOut(nil) }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -68,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         quit.target = NSApp
     }
 
-    func menuWillOpen(_ menu: NSMenu) { hidePanel() }
+    func menuWillOpen(_ menu: NSMenu) { hidePanel(); settingsPanel?.orderOut(nil) }
 
     @objc private func showSettings() {
         let panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
@@ -80,9 +85,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return true
         }
         if settingsPanel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 250), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = TransientPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 250), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash Settings"
             panel.isFloatingPanel = true
+            panel.hidesOnDeactivate = true
+            panel.collectionBehavior = [.transient]
             panel.contentView = NSHostingView(rootView: view)
             settingsPanel = panel
         } else {
