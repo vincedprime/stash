@@ -172,33 +172,32 @@ struct HistoryView: View {
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .background(KeyEventMonitor { event in
             let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            let isOptionOnly = modifiers == .option
+            func matches(_ action: PanelShortcut) -> Bool {
+                let binding = ShortcutStorage.binding(for: action)
+                let eventModifiers: UInt32 = (event.modifierFlags.contains(.command) ? UInt32(cmdKey) : 0) | (event.modifierFlags.contains(.option) ? UInt32(optionKey) : 0) | (event.modifierFlags.contains(.control) ? UInt32(controlKey) : 0) | (event.modifierFlags.contains(.shift) ? UInt32(shiftKey) : 0)
+                return UInt32(event.keyCode) == binding.keyCode && eventModifiers == binding.modifiers
+            }
             if modifiers == .command, event.keyCode == UInt16(kVK_ANSI_A) {
                 // SwiftUI's FocusState can lag behind the AppKit field editor in a
                 // non-activating panel. Let AppKit resolve the actual responder.
                 return NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: nil)
             }
-            if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_X) {
+            if matches(.delete) {
                 model.deleteSelection()
                 return true
             }
-            if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_P) {
+            if matches(.pin) {
                 model.togglePinSelection()
                 return true
             }
-            if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_Q) {
+            if matches(.filter) {
                 model.cycleFilter()
                 return true
             }
-            // Keep editing shortcuts in the search field intact, but always own
-            // unmodified list navigation even while that field has focus.
-            guard modifiers.isEmpty else { return false }
-            switch event.keyCode {
-            case UInt16(kVK_UpArrow): model.moveSelection(by: -1); return true
-            case UInt16(kVK_DownArrow): model.moveSelection(by: 1); return true
-            case UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter): model.restoreSelection(); return true
-            default: return false
-            }
+            if matches(.up) { model.moveSelection(by: -1); return true }
+            if matches(.down) { model.moveSelection(by: 1); return true }
+            if matches(.copy) { model.restoreSelection(); return true }
+            return false
         })
     }
 }

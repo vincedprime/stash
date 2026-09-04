@@ -9,46 +9,76 @@
       :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; }
       * { box-sizing: border-box; }
       body { margin: 0; color: #f4f0f7; background: #17131b; }
-      main { width: min(960px, calc(100% - 48px)); margin: 0 auto; }
+      main { width: min(1040px, calc(100% - 48px)); margin: 0 auto; }
       header { display: flex; align-items: center; justify-content: space-between; padding: 26px 0; }
       .brand { font-size: 21px; font-weight: 750; letter-spacing: -.03em; }
       a { color: inherit; }
-      .source { color: #c9c2cd; text-decoration: none; font-size: 14px; }
-      .hero { padding: 96px 0 82px; max-width: 720px; }
-      h1 { margin: 0; font-size: clamp(42px, 7vw, 74px); line-height: .97; letter-spacing: -.065em; }
-      .lead { margin: 26px 0 34px; max-width: 620px; color: #c9c2cd; font-size: 21px; line-height: 1.45; }
-      .download { display: inline-flex; gap: 11px; align-items: center; padding: 15px 20px; border-radius: 12px; color: #fff; background: #1877f2; font-weight: 700; text-decoration: none; box-shadow: 0 8px 28px #1877f244; }
-      .download small { font-size: 12px; font-weight: 500; opacity: .82; }
-      .note { margin-top: 16px; color: #938b99; font-size: 13px; }
-      section { border-top: 1px solid #352e3a; padding: 48px 0; }
+      .source { color: #c9c2cd; font-size: 14px; text-decoration: none; }
+      .source:focus-visible, .download:focus-visible, .copy:focus-visible { outline: 3px solid #8ab8ff; outline-offset: 3px; }
+      .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, .82fr); align-items: center; gap: 64px; padding: 82px 0 72px; }
+      h1 { margin: 0; font-size: clamp(44px, 6vw, 72px); line-height: .97; letter-spacing: -.065em; }
+      .lead { max-width: 600px; margin: 26px 0 30px; color: #c9c2cd; font-size: 20px; line-height: 1.45; }
+      .download { display: inline-flex; align-items: center; padding: 15px 20px; border-radius: 12px; color: #fff; background: #1877f2; box-shadow: 0 8px 28px #1877f244; font-weight: 700; text-decoration: none; transition: transform 160ms cubic-bezier(.23,1,.32,1), filter 160ms ease; }
+      .download:active, .copy:active { transform: scale(.97); }
+      .release { margin: 12px 0 0; color: #938b99; font-size: 13px; }
+      .warning { display: flex; gap: 10px; max-width: 530px; margin-top: 22px; padding: 11px 13px; border: 1px solid #44394a; border-radius: 10px; color: #b9b0bd; background: #1e1821; font-size: 13px; line-height: 1.4; }
+      .warning strong { color: #e6dce8; }
+      .preview { overflow: hidden; border: 1px solid #403746; border-radius: 18px; background: #201a24; box-shadow: 0 24px 64px #0006; }
+      .preview-bar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-bottom: 1px solid #39303e; color: #aea6b2; font-size: 11px; }
+      .dots { display: flex; gap: 5px; } .dots i { width: 8px; height: 8px; border-radius: 50%; background: #615965; } .dots i:first-child { background: #f05f57; }
+      .preview-title { margin: 0 auto; transform: translateX(16px); }
+      .preview-search { margin: 12px; padding: 9px 10px; border: 2px solid #2379c5; border-radius: 8px; color: #a79fab; font-size: 12px; }
+      .preview-body { display: grid; grid-template-columns: 1fr 132px; min-height: 220px; border-top: 1px solid #39303e; }
+      .preview-list { padding: 7px; }
+      .preview-row { display: flex; align-items: center; height: 34px; padding: 0 8px; border-radius: 5px; color: #cfc8d3; font-size: 11px; }
+      .preview-row.selected { background: #1768cf; color: #fff; } .preview-row span { margin-left: auto; color: #98909d; } .preview-row.selected span { color: #d8e8ff; }
+      .preview-detail { padding: 14px; border-left: 1px solid #39303e; } .preview-detail h3 { margin: 0 0 10px; font-size: 13px; } .preview-detail p { margin: 7px 0; color: #958c99; font-size: 10px; line-height: 1.35; }
+      section { border-top: 1px solid #352e3a; padding: 52px 0; }
       h2 { margin: 0 0 22px; font-size: 27px; letter-spacing: -.035em; }
-      .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-      .feature { padding: 20px; border: 1px solid #352e3a; border-radius: 14px; background: #211b24; }
-      .feature h3 { margin: 0 0 8px; font-size: 16px; }
-      .feature p, li { color: #c9c2cd; line-height: 1.5; }
-      .feature p { margin: 0; font-size: 14px; }
-      ol { margin: 0; padding-left: 22px; }
-      li + li { margin-top: 10px; }
-      code { padding: 2px 5px; border-radius: 4px; background: #2b2430; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
-      section > p > code { display: block; overflow-x: auto; padding: 13px; white-space: nowrap; }
+      .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      .feature { padding: 17px; border: 1px solid #302934; border-radius: 13px; background: #1d1820; }
+      .feature h3 { margin: 0 0 7px; font-size: 16px; } .feature p, li { color: #c9c2cd; line-height: 1.5; } .feature p { margin: 0; font-size: 14px; }
+      ol { margin: 0; padding-left: 22px; } li + li { margin-top: 10px; }
+      .command { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px; padding: 8px; border: 1px solid #403746; border-radius: 11px; background: #1d1820; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } .command code { flex: 1; overflow-x: auto; padding: 7px; color: #ddd5e0; font-size: 12px; white-space: nowrap; }
+      .copy { flex: none; padding: 8px 10px; border: 0; border-radius: 7px; color: #f7f4f8; background: #36303a; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; transition: transform 160ms cubic-bezier(.23,1,.32,1), background-color 160ms ease; }
+      .note { color: #938b99; font-size: 13px; line-height: 1.45; }
       footer { padding: 30px 0 46px; color: #938b99; font-size: 13px; }
-      @media (max-width: 650px) { .hero { padding: 64px 0; } .features { grid-template-columns: 1fr; } }
+      @media (hover: hover) and (pointer: fine) { .source:hover { color: #fff; } .download:hover { filter: brightness(1.1); } .copy:hover { background: #4a414e; } }
+      @media (max-width: 760px) { main { width: min(100% - 48px, 600px); } .hero { grid-template-columns: 1fr; gap: 42px; padding: 68px 0 58px; } .preview { max-width: 460px; } .features { grid-template-columns: 1fr; } }
+      @media (max-width: 460px) { main { width: calc(100% - 40px); } header { padding: 22px 0; } .source { font-size: 12px; } .lead { font-size: 18px; } .command { align-items: flex-start; } .copy { margin-top: 1px; } }
+      @media (prefers-reduced-motion: reduce) { .download, .copy { transition: none; } }
     </style>
   </head>
   <body>
     <main>
       <header>
         <div class="brand">Stash</div>
-        <a class="source" href="https://github.com/vincedprime/stash">View source on GitHub ↗</a>
+        <a class="source" href="https://github.com/vincedprime/stash">GitHub ↗</a>
       </header>
 
       <div class="hero">
-        <h1>Your clipboard,<br>kept locally.</h1>
-        <p class="lead">Stash is a fast macOS clipboard manager for text and images. It runs from your menu bar, stores history only on your Mac, and needs no account or Accessibility permission.</p>
-        <a class="download" href="downloads/Stash.dmg" download>
-          Download for Apple Silicon
-        </a>
-        <div class="note">Unsigned local app · macOS 15 or later · Apple Silicon</div>
+        <div>
+          <h1>Your clipboard,<br>kept locally.</h1>
+          <p class="lead">Stash is a fast macOS clipboard manager for text and images. It runs from your menu bar, stores history only on your Mac, and needs no account or Accessibility permission.</p>
+          <a class="download" href="https://github.com/vincedprime/stash/releases/latest/download/Stash.dmg">Download for Apple Silicon</a>
+          <p class="release">Current build · macOS 15 or later · Apple Silicon</p>
+          <div class="warning"><span>ⓘ</span><span><strong>Unsigned weekend build.</strong> Install it with the one Terminal command below after downloading.</span></div>
+        </div>
+        <div class="preview" aria-label="Preview of the Stash clipboard history panel">
+          <div class="preview-bar"><span class="dots"><i></i><i></i><i></i></span><span class="preview-title">Stash</span></div>
+          <div class="preview-search">Search clipboard</div>
+          <div class="preview-body">
+            <div class="preview-list">
+              <div class="preview-row selected">Design notes for Stash <span>⌘</span></div>
+              <div class="preview-row">https://github.com/vincedprime/stash <span>⌘</span></div>
+              <div class="preview-row">Selected dates (7) <span>⌘</span></div>
+              <div class="preview-row">Image <span>⌘</span></div>
+              <div class="preview-row">Public holidays <span>⌘</span></div>
+            </div>
+            <div class="preview-detail"><h3>Text</h3><p>Copied<br>Today at 17:30</p><p>From<br>Browser</p><p>24 characters · Once</p></div>
+          </div>
+        </div>
       </div>
 
       <section>
@@ -64,14 +94,32 @@
         <h2>Install</h2>
         <ol>
           <li>Download and open <strong>Stash.dmg</strong>.</li>
-          <li>Open <strong>Terminal</strong>, then paste and run this command:</li>
+          <li>Open <strong>Terminal</strong>, then copy and run this command:</li>
         </ol>
-        <p><code>cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code></p>
-        <p class="note">This copies Stash to Applications, removes the download quarantine for this unsigned build, and opens it. A managed Mac may require administrator approval.</p>
+        <div class="command"><code id="install-command">cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code><button class="copy" type="button" data-target="install-command" aria-describedby="install-note">Copy</button></div>
+        <p id="install-note" class="note">This copies Stash to Applications, removes the download quarantine for this unsigned build, and opens it. A managed Mac may require administrator approval.</p>
         <p>Then click the Stash menu-bar icon or press <code>⌥Space</code> to search clipboard history.</p>
+      </section>
+
+      <section>
+        <h2>Uninstall</h2>
+        <p>Quit Stash and remove the app and its optional launch-at-login entry:</p>
+        <div class="command"><code id="uninstall-command">pkill -x Stash 2&gt;/dev/null || true; launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinay.stash.plist" 2&gt;/dev/null || true; rm -f "$HOME/Library/LaunchAgents/com.vinay.stash.plist"; rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"</code><button class="copy" type="button" data-target="uninstall-command" aria-describedby="uninstall-note">Copy</button></div>
+        <p id="uninstall-note" class="note">Clipboard history remains available if you reinstall. To permanently erase all history and settings too, run:</p>
+        <div class="command"><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"; defaults delete com.vinay.stash 2&gt;/dev/null || true</code><button class="copy" type="button" data-target="erase-command">Copy</button></div>
       </section>
 
       <footer>Stash is open source and stores supported clipboard history locally on your Mac.</footer>
     </main>
+    <script>
+      document.querySelectorAll('.copy').forEach((copyButton) => {
+        copyButton.addEventListener('click', async () => {
+          const command = document.querySelector(`#${copyButton.dataset.target}`).textContent;
+          await navigator.clipboard.writeText(command);
+          copyButton.textContent = 'Copied';
+          window.setTimeout(() => { copyButton.textContent = 'Copy'; }, 1600);
+        });
+      });
+    </script>
   </body>
 </html>
