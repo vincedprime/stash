@@ -36,7 +36,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "archivebox", accessibilityDescription: "Stash clipboard history")
         statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePanel)
+        statusItem.button?.action = #selector(statusItemPressed)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    @objc private func statusItemPressed() {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            showConfigurationMenu()
+        } else {
+            togglePanel()
+        }
+    }
+
+    private func showConfigurationMenu() {
+        let menu = NSMenu()
+        let showItem = menu.addItem(withTitle: "Show Stash", action: #selector(togglePanel), keyEquivalent: "")
+        showItem.target = self
+
+        let openShortcut = NSMenuItem(title: "Open Stash shortcut", action: nil, keyEquivalent: "")
+        let shortcutMenu = NSMenu()
+        let optionSpace = shortcutMenu.addItem(withTitle: "Option-Space", action: #selector(setOpenShortcut(_:)), keyEquivalent: "")
+        optionSpace.target = self
+        optionSpace.representedObject = false
+        let optionShiftSpace = shortcutMenu.addItem(withTitle: "Option-Shift-Space", action: #selector(setOpenShortcut(_:)), keyEquivalent: "")
+        optionShiftSpace.target = self
+        optionShiftSpace.representedObject = true
+        let usesShift = UserDefaults.standard.bool(forKey: "optionShiftShortcut")
+        optionSpace.state = usesShift ? .off : .on
+        optionShiftSpace.state = usesShift ? .on : .off
+        openShortcut.submenu = shortcutMenu
+        menu.addItem(openShortcut)
+
+        let panelShortcuts = NSMenuItem(title: "Panel shortcuts", action: nil, keyEquivalent: "")
+        let panelMenu = NSMenu()
+        ["Navigate  ↑ / ↓", "Copy selected  Return", "Pin selected  Option-P", "Delete selected  Option-X", "Cycle filter  Option-Q"].forEach {
+            let item = panelMenu.addItem(withTitle: $0, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+        }
+        panelShortcuts.submenu = panelMenu
+        menu.addItem(panelShortcuts)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Stash", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func setOpenShortcut(_ sender: NSMenuItem) {
+        let optionShift = sender.representedObject as? Bool ?? false
+        guard shortcut?.register(optionShift: optionShift) == true else {
+            model?.message = "macOS could not register that shortcut. Choose a different one."
+            return
+        }
+        UserDefaults.standard.set(optionShift, forKey: "optionShiftShortcut")
     }
 
     @objc private func togglePanel() { panel?.isVisible == true ? hidePanel() : showPanelWindow() }
