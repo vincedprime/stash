@@ -3,7 +3,7 @@
 <plist version="1.0"><dict>
   <key>CFBundleDisplayName</key><string>Stash</string>
   <key>CFBundleExecutable</key><string>Stash</string>
-  <key>CFBundleIdentifier</key><string>com.vinay.stash</string>
+  <key>CFBundleIdentifier</key><string>com.vinylstack.stash</string>
   <key>CFBundleName</key><string>Stash</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
