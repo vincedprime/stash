@@ -173,9 +173,10 @@ struct HistoryView: View {
         .background(KeyEventMonitor { event in
             let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
             let isOptionOnly = modifiers == .option
-            if modifiers == .command, event.keyCode == UInt16(kVK_ANSI_A), searchIsFocused {
-                NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSResponder.selectAll(_:)), with: nil)
-                return true
+            if modifiers == .command, event.keyCode == UInt16(kVK_ANSI_A) {
+                // SwiftUI's FocusState can lag behind the AppKit field editor in a
+                // non-activating panel. Let AppKit resolve the actual responder.
+                return NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: nil)
             }
             if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_X) {
                 model.deleteSelection()
