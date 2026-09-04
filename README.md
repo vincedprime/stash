@@ -4,7 +4,11 @@ Stash is a native, local-only macOS clipboard manager. It saves text and images 
 
 > Stash records clipboard content from every app. That can include passwords, tokens, and work information. Delete history or pause recording whenever that is not appropriate.
 
-## Requirements
+Download it from release or from here - vincedprime.github.io/stash/
+
+## Set up locally
+
+### Pre-requisites 
 
 - Apple Silicon Mac running macOS 15 or later.
 - Apple Command Line Tools. Check with:
@@ -18,8 +22,6 @@ Stash is a native, local-only macOS clipboard manager. It saves text and images 
   ```sh
   xcode-select --install
   ```
-
-## Set up locally
 
 1. Clone the repository and enter it:
 
