@@ -27,14 +27,16 @@ final class ClipboardStore {
 
     enum StoreError: Error { case open, sql, imageRead }
 
-    func entries(query: String = "") -> [ClipboardEntry] {
-        let filter = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sql = filter.isEmpty
-          ? "SELECT id,created_at,kind,text,image_path,byte_count,pinned FROM entries ORDER BY pinned DESC,created_at DESC"
-          : "SELECT id,created_at,kind,text,image_path,byte_count,pinned FROM entries WHERE text LIKE ? OR kind = 'image' ORDER BY pinned DESC,created_at DESC"
+    func entries(query: String = "", filter: HistoryFilter = .all) -> [ClipboardEntry] {
+        let searchText = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var clauses: [String] = []
+        if let kind = filter.kind { clauses.append("kind = '\(kind.rawValue)'") }
+        if !searchText.isEmpty { clauses.append("text LIKE ?") }
+        let whereClause = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
+        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
-        if !filter.isEmpty { sqlite3_bind_text(statement, 1, "%\(filter)%", -1, SQLITE_TRANSIENT) }
+        if !searchText.isEmpty { sqlite3_bind_text(statement, 1, "%\(searchText)%", -1, SQLITE_TRANSIENT) }
         var result: [ClipboardEntry] = []
         while sqlite3_step(statement) == SQLITE_ROW, let entry = decode(statement) { result.append(entry) }
         return result

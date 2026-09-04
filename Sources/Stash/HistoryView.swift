@@ -4,15 +4,34 @@ import SwiftUI
 @MainActor
 final class HistoryModel: ObservableObject {
     @Published var query = "" { didSet { reload() } }
+    @Published var filter: HistoryFilter = .all { didSet { reload() } }
     @Published var entries: [ClipboardEntry] = []
+    @Published var selectedID: ClipboardEntry.ID?
     @Published var usage = 0
     @Published var paused = false
     @Published var message = ""
+    @Published var isPresented = false
     let store: ClipboardStore
     var onRestore: ((ClipboardEntry) -> Void)?
+    var onPauseChanged: ((Bool) -> Void)?
 
     init(store: ClipboardStore) { self.store = store; reload() }
-    func reload() { entries = store.entries(query: query); usage = store.byteUsage() }
+    var selectedEntry: ClipboardEntry? { entries.first { $0.id == selectedID } }
+
+    func reload() {
+        entries = store.entries(query: query, filter: filter)
+        usage = store.byteUsage()
+        if !entries.contains(where: { $0.id == selectedID }) { selectedID = entries.first?.id }
+    }
+
+    func moveSelection(by offset: Int) {
+        guard !entries.isEmpty else { return }
+        let current = selectedID.flatMap { id in entries.firstIndex { $0.id == id } } ?? 0
+        selectedID = entries[max(0, min(entries.count - 1, current + offset))].id
+    }
+
+    func restoreSelection() { if let selectedEntry { restore(selectedEntry) } }
+    func setPaused(_ paused: Bool) { self.paused = paused; onPauseChanged?(paused) }
     func restore(_ entry: ClipboardEntry) { store.restore(entry); onRestore?(entry) }
     func togglePin(_ entry: ClipboardEntry) { store.setPinned(entry, pinned: !entry.isPinned); reload() }
     func delete(_ entry: ClipboardEntry) { store.delete(entry); reload() }
@@ -21,41 +40,88 @@ final class HistoryModel: ObservableObject {
 
 struct HistoryView: View {
     @ObservedObject var model: HistoryModel
+    @FocusState private var searchIsFocused: Bool
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: "archivebox")
+            HStack(spacing: 10) {
                 TextField("Search clipboard", text: $model.query)
                     .textFieldStyle(.roundedBorder)
-                Toggle("Pause", isOn: $model.paused).labelsHidden()
-            }.padding(12)
+                    .focused($searchIsFocused)
+                    .onSubmit { model.restoreSelection() }
+                Picker("Filter", selection: $model.filter) {
+                    ForEach(HistoryFilter.allCases) { filter in Text(filter.rawValue).tag(filter) }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 210)
+            }
+            .padding(12)
+
             Divider()
-            List(model.entries) { entry in
-                Button { model.restore(entry) } label: {
-                    HStack(spacing: 10) {
-                        if entry.kind == .image, let path = entry.imagePath,
-                           let image = NSImage(contentsOf: model.storeImageURL(path)) {
-                            Image(nsImage: image).resizable().scaledToFit().frame(width: 44, height: 32)
-                        } else { Image(systemName: entry.kind == .text ? "doc.text" : "photo") }
-                        VStack(alignment: .leading) {
-                            Text(entry.preview.isEmpty ? "Empty text" : entry.preview).lineLimit(2)
-                            Text(entry.isPinned ? "Pinned" : entry.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+
+            HStack(spacing: 0) {
+                List(selection: $model.selectedID) {
+                    ForEach(model.entries) { entry in
+                        HStack(spacing: 10) {
+                            if entry.kind == .image, let path = entry.imagePath,
+                               let image = NSImage(contentsOf: model.storeImageURL(path)) {
+                                Image(nsImage: image).resizable().scaledToFit().frame(width: 44, height: 32)
+                            }
+                            VStack(alignment: .leading) {
+                                Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
+                                    .lineLimit(2)
+                                Text(entry.isPinned ? "Pinned" : entry.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button { model.togglePin(entry) } label: { Image(systemName: entry.isPinned ? "pin.fill" : "pin") }
+                                .buttonStyle(.borderless)
+                            Button { model.delete(entry) } label: { Image(systemName: "trash") }
+                                .buttonStyle(.borderless)
                         }
-                        Spacer()
-                        Button { model.togglePin(entry) } label: { Image(systemName: entry.isPinned ? "pin.fill" : "pin") }.buttonStyle(.borderless)
-                        Button { model.delete(entry) } label: { Image(systemName: "trash") }.buttonStyle(.borderless)
+                        .tag(entry.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { model.restore(entry) }
                     }
-                }.buttonStyle(.plain)
-            }.listStyle(.plain)
+                }
+                .listStyle(.plain)
+                .frame(minWidth: 310)
+
+                if let entry = model.selectedEntry, entry.kind == .image,
+                   let path = entry.imagePath,
+                   let image = NSImage(contentsOf: model.storeImageURL(path)) {
+                    Divider()
+                    VStack {
+                        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Text("Selected image").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .frame(width: 250)
+                }
+            }
+
             Divider()
             HStack {
-                Text(model.paused ? "Recording paused" : "Recording all clipboard changes")
-                Spacer()
                 Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .file)) / 50 MB")
                 Button("Clear All") { model.clear() }
-            }.font(.caption).padding(10)
+                Spacer()
+                Toggle(model.paused ? "Recording paused" : "Recording", isOn: Binding(
+                    get: { model.paused },
+                    set: { model.setPaused($0) }
+                ))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+            .font(.caption)
+            .padding(10)
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
-        }.frame(width: 500, height: 520)
+        }
+        .frame(width: 610, height: 540)
+        .onAppear { searchIsFocused = true }
+        .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
+        .onMoveCommand { direction in
+            switch direction { case .up: model.moveSelection(by: -1); case .down: model.moveSelection(by: 1); default: break }
+        }
     }
 }
 

@@ -2,6 +2,17 @@ import Foundation
 
 enum EntryKind: String, Codable, Sendable { case text, image }
 
+enum HistoryFilter: String, CaseIterable, Identifiable, Sendable {
+    case all = "All"
+    case text = "Text"
+    case image = "Images"
+
+    var id: Self { self }
+    var kind: EntryKind? {
+        switch self { case .all: nil; case .text: .text; case .image: .image }
+    }
+}
+
 struct ClipboardEntry: Identifiable, Equatable, Sendable {
     let id: UUID
     let createdAt: Date
