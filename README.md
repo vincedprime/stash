@@ -81,16 +81,23 @@ This copies Stash to Applications, clears macOS’s download quarantine for this
 - History is retained until manually deleted, subject to a 50 MB total cap.
 - When space runs low, Stash removes the oldest unpinned entries first. If pinned entries fill the cap, recording pauses until space is freed.
 
-## Stop or remove it
+## Uninstall
 
-To stop launch-at-login behavior:
+Quit Stash, disable its optional launch agent, and remove both the downloaded and locally built app locations:
 
 ```sh
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.vinay.stash.plist
-rm ~/Library/LaunchAgents/com.vinay.stash.plist
+pkill -x Stash 2>/dev/null || true
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinay.stash.plist" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/com.vinay.stash.plist"
+rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"
 ```
 
-To remove stored clipboard history, delete `~/Library/Application Support/Stash`. To remove the app, delete `~/Applications/Stash.app`.
+Clipboard history is kept so it can be restored after reinstalling. To permanently remove all Stash history and settings too:
+
+```sh
+rm -rf "$HOME/Library/Application Support/Stash"
+defaults delete com.vinay.stash 2>/dev/null || true
+```
 
 ## Development
 

@@ -96,20 +96,29 @@
           <li>Download and open <strong>Stash.dmg</strong>.</li>
           <li>Open <strong>Terminal</strong>, then copy and run this command:</li>
         </ol>
-        <div class="command"><code id="install-command">cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code><button class="copy" type="button" aria-describedby="install-note">Copy</button></div>
+        <div class="command"><code id="install-command">cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code><button class="copy" type="button" data-target="install-command" aria-describedby="install-note">Copy</button></div>
         <p id="install-note" class="note">This copies Stash to Applications, removes the download quarantine for this unsigned build, and opens it. A managed Mac may require administrator approval.</p>
         <p>Then click the Stash menu-bar icon or press <code>⌥Space</code> to search clipboard history.</p>
+      </section>
+
+      <section>
+        <h2>Uninstall</h2>
+        <p>Quit Stash and remove the app and its optional launch-at-login entry:</p>
+        <div class="command"><code id="uninstall-command">pkill -x Stash 2&gt;/dev/null || true; launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinay.stash.plist" 2&gt;/dev/null || true; rm -f "$HOME/Library/LaunchAgents/com.vinay.stash.plist"; rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"</code><button class="copy" type="button" data-target="uninstall-command" aria-describedby="uninstall-note">Copy</button></div>
+        <p id="uninstall-note" class="note">Clipboard history remains available if you reinstall. To permanently erase all history and settings too, run:</p>
+        <div class="command"><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"; defaults delete com.vinay.stash 2&gt;/dev/null || true</code><button class="copy" type="button" data-target="erase-command">Copy</button></div>
       </section>
 
       <footer>Stash is open source and stores supported clipboard history locally on your Mac.</footer>
     </main>
     <script>
-      const copyButton = document.querySelector('.copy');
-      const command = document.querySelector('#install-command').textContent;
-      copyButton.addEventListener('click', async () => {
-        await navigator.clipboard.writeText(command);
-        copyButton.textContent = 'Copied';
-        window.setTimeout(() => { copyButton.textContent = 'Copy'; }, 1600);
+      document.querySelectorAll('.copy').forEach((copyButton) => {
+        copyButton.addEventListener('click', async () => {
+          const command = document.querySelector(`#${copyButton.dataset.target}`).textContent;
+          await navigator.clipboard.writeText(command);
+          copyButton.textContent = 'Copied';
+          window.setTimeout(() => { copyButton.textContent = 'Copy'; }, 1600);
+        });
       });
     </script>
   </body>
