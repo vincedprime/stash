@@ -20,9 +20,12 @@ final class ClipboardStore {
         try execute("""
         CREATE TABLE IF NOT EXISTS entries (
           id TEXT PRIMARY KEY, created_at REAL NOT NULL, kind TEXT NOT NULL,
-          text TEXT, image_path TEXT, byte_count INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0
+          text TEXT, image_path TEXT, byte_count INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0,
+          source_app TEXT, copy_count INTEGER NOT NULL DEFAULT 1
         ); CREATE INDEX IF NOT EXISTS entries_created ON entries(created_at DESC);
         """)
+        try? execute("ALTER TABLE entries ADD COLUMN source_app TEXT")
+        try? execute("ALTER TABLE entries ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 1")
     }
 
     enum StoreError: Error { case open, sql, imageRead }
@@ -33,7 +36,7 @@ final class ClipboardStore {
         if let kind = filter.kind { clauses.append("kind = '\(kind.rawValue)'") }
         if !searchText.isEmpty { clauses.append("text LIKE ?") }
         let whereClause = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
-        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
+        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
         if !searchText.isEmpty { sqlite3_bind_text(statement, 1, "%\(searchText)%", -1, SQLITE_TRANSIENT) }
@@ -46,18 +49,24 @@ final class ClipboardStore {
         scalarInt("SELECT COALESCE(SUM(byte_count), 0) FROM entries")
     }
 
-    func saveText(_ text: String) -> SaveResult {
+    func saveText(_ text: String, sourceApp: String?) -> SaveResult {
         guard !text.isEmpty else { return .duplicate }
-        if let last = entries().first, last.kind == .text, last.text == text { return .duplicate }
-        return insert(kind: .text, text: text, imageData: nil)
+        if let last = entries().first, last.kind == .text, last.text == text {
+            refreshDuplicate(last, sourceApp: sourceApp)
+            return .saved
+        }
+        return insert(kind: .text, text: text, imageData: nil, sourceApp: sourceApp)
     }
 
-    func saveImage(_ image: NSImage) -> SaveResult {
+    func saveImage(_ image: NSImage, sourceApp: String?) -> SaveResult {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),
               let png = bitmap.representation(using: .png, properties: [:]) else { return .duplicate }
-        if let last = entries().first, last.kind == .image, last.byteCount == png.count { return .duplicate }
-        return insert(kind: .image, text: nil, imageData: png)
+        if let last = entries().first, last.kind == .image, last.byteCount == png.count {
+            refreshDuplicate(last, sourceApp: sourceApp)
+            return .saved
+        }
+        return insert(kind: .image, text: nil, imageData: png, sourceApp: sourceApp)
     }
 
     func setPinned(_ entry: ClipboardEntry, pinned: Bool) {
@@ -86,7 +95,7 @@ final class ClipboardStore {
 
     func imageURL(_ path: String) -> URL { root.appendingPathComponent(path) }
 
-    private func insert(kind: EntryKind, text: String?, imageData: Data?) -> SaveResult {
+    private func insert(kind: EntryKind, text: String?, imageData: Data?, sourceApp: String?) -> SaveResult {
         let bytes = imageData?.count ?? (text?.utf8.count ?? 0)
         guard bytes <= Self.maximumBytes else { return .full }
         makeRoom(for: bytes)
@@ -98,10 +107,16 @@ final class ClipboardStore {
             do { try imageData.write(to: root.appendingPathComponent(relativePath!), options: .atomic) }
             catch { return .full }
         } else { relativePath = nil }
-        executeQuietly("INSERT INTO entries(id,created_at,kind,text,image_path,byte_count,pinned) VALUES(?,?,?,?,?,?,0)", bindings: [
-            .text(id.uuidString), .double(Date().timeIntervalSince1970), .text(kind.rawValue), .optionalText(text), .optionalText(relativePath), .int(bytes)
+        executeQuietly("INSERT INTO entries(id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count) VALUES(?,?,?,?,?,?,0,?,1)", bindings: [
+            .text(id.uuidString), .double(Date().timeIntervalSince1970), .text(kind.rawValue), .optionalText(text), .optionalText(relativePath), .int(bytes), .optionalText(sourceApp)
         ])
         return .saved
+    }
+
+    private func refreshDuplicate(_ entry: ClipboardEntry, sourceApp: String?) {
+        executeQuietly("UPDATE entries SET created_at = ?, source_app = ?, copy_count = copy_count + 1 WHERE id = ?", bindings: [
+            .double(Date().timeIntervalSince1970), .optionalText(sourceApp), .text(entry.id.uuidString)
+        ])
     }
 
     private func makeRoom(for bytes: Int) {
@@ -142,6 +157,7 @@ final class ClipboardStore {
               let kindText = sqlite3_column_text(statement, 2), let kind = EntryKind(rawValue: String(cString: kindText)) else { return nil }
         return ClipboardEntry(id: id, createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)), kind: kind,
           text: sqlite3_column_text(statement, 3).map { String(cString: $0) }, imagePath: sqlite3_column_text(statement, 4).map { String(cString: $0) },
-          byteCount: Int(sqlite3_column_int64(statement, 5)), isPinned: sqlite3_column_int(statement, 6) != 0)
+          byteCount: Int(sqlite3_column_int64(statement, 5)), isPinned: sqlite3_column_int(statement, 6) != 0,
+          sourceApp: sqlite3_column_text(statement, 7).map { String(cString: $0) }, copyCount: Int(sqlite3_column_int64(statement, 8)))
     }
 }

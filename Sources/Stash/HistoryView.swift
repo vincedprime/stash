@@ -78,7 +78,7 @@ struct HistoryView: View {
                     .textFieldStyle(.roundedBorder)
                     .focused($searchIsFocused)
                     .onSubmit { model.restoreSelection() }
-                Picker("Filter", selection: $model.filter) {
+                Picker("", selection: $model.filter) {
                     ForEach(HistoryFilter.allCases) { filter in Text(filter.rawValue).tag(filter) }
                 }
                 .pickerStyle(.segmented)
@@ -89,22 +89,21 @@ struct HistoryView: View {
 
             Divider()
 
-            ZStack(alignment: .trailing) {
+            HStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     List(selection: $model.selectedID) {
                         ForEach(model.entries) { entry in
                             HStack(spacing: 10) {
                                 if entry.kind == .image, let path = entry.imagePath,
                                    let image = NSImage(contentsOf: model.storeImageURL(path)) {
-                                    Image(nsImage: image).resizable().scaledToFit().frame(width: 44, height: 32)
+                                    Image(nsImage: image).resizable().scaledToFit().frame(width: 36, height: 36)
                                 }
-                                VStack(alignment: .leading) {
-                                    Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
-                                        .lineLimit(2)
-                                    Text(entry.isPinned ? "Pinned" : entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
+                                Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                 Spacer()
+                                Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 Button { model.togglePin(entry) } label: { Image(systemName: entry.isPinned ? "pin.fill" : "pin") }
                                     .buttonStyle(.borderless)
                                 Button { model.delete(entry) } label: { Image(systemName: "trash") }
@@ -116,23 +115,19 @@ struct HistoryView: View {
                             .background(model.selectedID == entry.id ? Color.accentColor.opacity(0.20) : Color.clear)
                             .onTapGesture { model.selectedID = entry.id }
                             .onTapGesture(count: 2) { model.restore(entry) }
+                            .frame(height: 46)
                         }
                     }
                     .listStyle(.plain)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 420)
                     .onChange(of: model.selectedID) { _, selectedID in
                         if let selectedID { proxy.scrollTo(selectedID, anchor: .center) }
                     }
                 }
 
-                if let entry = model.selectedEntry, entry.kind == .image {
-                    ImagePreview(entry: entry, store: model.store)
-                        .frame(width: 280)
-                        .background(.regularMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .shadow(radius: 12)
-                        .padding(14)
-                }
+                Divider()
+                EntryViewer(entry: model.selectedEntry, store: model.store, onTogglePin: model.togglePin)
+                    .frame(width: 320)
             }
 
             Divider()
@@ -151,7 +146,7 @@ struct HistoryView: View {
             .padding(10)
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
         }
-        .frame(width: 500, height: 540)
+        .frame(width: 740, height: 540)
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .background(KeyEventMonitor { event in
@@ -178,23 +173,60 @@ extension HistoryModel {
     func storeImageURL(_ path: String) -> URL { store.imageURL(path) }
 }
 
-private struct ImagePreview: View {
+private struct EntryViewer: View {
     let entry: ClipboardEntry?
     let store: ClipboardStore
+    let onTogglePin: (ClipboardEntry) -> Void
 
     var body: some View {
-        VStack {
-            if let entry, entry.kind == .image,
-               let path = entry.imagePath,
-               let image = NSImage(contentsOf: store.imageURL(path)) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            if let entry {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text(entry.kind == .image ? "Image" : "Text").font(.headline)
+                        Spacer()
+                        Button { onTogglePin(entry) } label: {
+                            Label(entry.isPinned ? "Pinned" : "Pin", systemImage: entry.isPinned ? "pin.fill" : "pin")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    Grid(alignment: .leading, verticalSpacing: 6) {
+                        metadataRow("Copied", entry.createdAt.formatted(date: .long, time: .shortened))
+                        metadataRow("From", entry.sourceApp ?? "Unknown app")
+                        metadataRow("Size", sizeDescription(for: entry))
+                        metadataRow("Copies", entry.copyCount == 1 ? "Once" : "\(entry.copyCount) times")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    Divider()
+                    if entry.kind == .image, let path = entry.imagePath,
+                       let image = NSImage(contentsOf: store.imageURL(path)) {
+                        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            Text(entry.text ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
             } else {
-                ContentUnavailableView("Image preview", systemImage: "photo", description: Text("Select an image to preview it."))
+                ContentUnavailableView("Clipboard item", systemImage: "doc.on.clipboard", description: Text("Select an item to see its details."))
             }
         }
         .padding(12)
+    }
+
+    @ViewBuilder
+    private func metadataRow(_ label: String, _ value: String) -> some View {
+        GridRow {
+            Text(label).foregroundStyle(.tertiary)
+            Text(value).lineLimit(1).truncationMode(.tail)
+        }
+    }
+
+    private func sizeDescription(for entry: ClipboardEntry) -> String {
+        let bytes = ByteCountFormatter.string(fromByteCount: Int64(entry.byteCount), countStyle: .file)
+        guard entry.kind == .text, let text = entry.text else { return bytes }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).count
+        return "\(text.count) characters · \(lines) \(lines == 1 ? "line" : "lines") · \(bytes)"
     }
 }

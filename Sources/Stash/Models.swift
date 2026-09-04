@@ -21,6 +21,8 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
     let imagePath: String?
     let byteCount: Int
     var isPinned: Bool
+    let sourceApp: String?
+    let copyCount: Int
 
     var preview: String {
         switch kind {

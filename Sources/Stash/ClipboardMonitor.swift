@@ -21,9 +21,10 @@ final class ClipboardMonitor {
         guard pasteboard.changeCount != changeCount else { return }
         changeCount = pasteboard.changeCount
         guard !isPaused else { onSave?(.paused); return }
+        let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
         let result: SaveResult
-        if let string = pasteboard.string(forType: .string) { result = store.saveText(string) }
-        else if let image = NSImage(pasteboard: pasteboard) { result = store.saveImage(image) }
+        if let string = pasteboard.string(forType: .string) { result = store.saveText(string, sourceApp: sourceApp) }
+        else if let image = NSImage(pasteboard: pasteboard) { result = store.saveImage(image, sourceApp: sourceApp) }
         else { return }
         onSave?(result)
     }
