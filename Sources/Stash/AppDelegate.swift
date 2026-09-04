@@ -1,6 +1,17 @@
 import AppKit
 import SwiftUI
 
+final class HistoryPanel: NSPanel {
+    var onResignKey: (() -> Void)?
+    override func resignKey() { super.resignKey(); onResignKey?() }
+    override func resignMain() { super.resignMain(); onResignKey?() }
+}
+
+final class TransientPanel: NSPanel {
+    override func resignKey() { super.resignKey(); orderOut(nil) }
+    override func resignMain() { super.resignMain(); orderOut(nil) }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -62,17 +73,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         quit.target = NSApp
     }
 
+    func menuWillOpen(_ menu: NSMenu) { hidePanel(); settingsPanel?.orderOut(nil) }
+
     @objc private func showSettings() {
-        let view = ShortcutSettingsView(open: openBinding, recording: recordingBinding) { [weak self] open, record in
+        let panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
+        let view = ShortcutSettingsView(open: openBinding, recording: recordingBinding, panel: panelBindings) { [weak self] open, record, panel in
             guard let self, self.shortcut?.register(open: open, record: record) == true else { return false }
             self.save(open, forKey: "openShortcut")
             self.save(record, forKey: "recordShortcut")
+            panel.forEach { ShortcutStorage.save($0.value, for: $0.key) }
             return true
         }
         if settingsPanel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 250), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = TransientPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 250), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash Settings"
             panel.isFloatingPanel = true
+            panel.hidesOnDeactivate = true
+            panel.collectionBehavior = [.transient]
             panel.contentView = NSHostingView(rootView: view)
             settingsPanel = panel
         } else {
@@ -101,11 +118,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.reload()
         model.isPresented = true
         if panel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = HistoryPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash"
             panel.isFloatingPanel = true
             panel.hidesOnDeactivate = true
+            panel.collectionBehavior = [.transient]
             panel.delegate = self
+            panel.onResignKey = { [weak self] in self?.hidePanel() }
             panel.contentView = NSHostingView(rootView: HistoryView(model: model))
             self.panel = panel
         }
