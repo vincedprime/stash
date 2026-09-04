@@ -71,6 +71,7 @@ struct KeyEventMonitor: NSViewRepresentable {
 struct HistoryView: View {
     @ObservedObject var model: HistoryModel
     @FocusState private var searchIsFocused: Bool
+    @State private var showsShortcuts = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -125,7 +126,7 @@ struct HistoryView: View {
 
                 Divider()
                 EntryViewer(entry: model.selectedEntry, store: model.store)
-                    .frame(width: 320)
+                    .frame(width: 240)
             }
 
             Divider()
@@ -133,8 +134,6 @@ struct HistoryView: View {
                 Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .file)) / 50 MB")
                 Button("Clear All") { model.clear() }
                 Spacer()
-                Text("↑↓ Navigate  ↩ Copy  ⌥P Pin  ⌥X Delete  ⌥Q Filter")
-                    .foregroundStyle(.secondary)
                 Toggle(model.paused ? "Recording paused" : "Recording", isOn: Binding(
                     get: { model.paused },
                     set: { model.setPaused($0) }
@@ -144,9 +143,25 @@ struct HistoryView: View {
             }
             .font(.caption)
             .padding(10)
+            Divider()
+            DisclosureGroup("Keyboard shortcuts", isExpanded: $showsShortcuts) {
+                HStack(spacing: 14) {
+                    Text("↑↓ Navigate")
+                    Text("↩ Copy")
+                    Text("⌥P Pin")
+                    Text("⌥X Delete")
+                    Text("⌥Q Filter")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+            }
+            .font(.caption)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
         }
-        .frame(width: 740, height: 540)
+        .frame(width: 660, height: 540)
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .background(KeyEventMonitor { event in
@@ -184,16 +199,15 @@ private struct EntryViewer: View {
     var body: some View {
         Group {
             if let entry {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(entry.kind == .image ? "Image" : "Text").font(.headline)
                         Spacer()
                     }
-                    Grid(alignment: .leading, verticalSpacing: 6) {
-                        metadataRow("Copied", entry.createdAt.formatted(date: .long, time: .shortened))
-                        metadataRow("From", entry.sourceApp ?? "Unknown app")
-                        metadataRow("Size", sizeDescription(for: entry))
-                        metadataRow("Copies", entry.copyCount == 1 ? "Once" : "\(entry.copyCount) times")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Copied · \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                        Text("From · \(entry.sourceApp ?? "Unknown app")")
+                        Text("\(sizeDescription(for: entry)) · \(entry.copyCount == 1 ? "Copied once" : "Copied \(entry.copyCount) times")")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -212,14 +226,6 @@ private struct EntryViewer: View {
             }
         }
         .padding(12)
-    }
-
-    @ViewBuilder
-    private func metadataRow(_ label: String, _ value: String) -> some View {
-        GridRow {
-            Text(label).foregroundStyle(.tertiary)
-            Text(value).lineLimit(1).truncationMode(.tail)
-        }
     }
 
     private func sizeDescription(for entry: ClipboardEntry) -> String {
