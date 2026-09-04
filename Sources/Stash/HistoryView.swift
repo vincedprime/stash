@@ -288,11 +288,7 @@ private struct EntryViewer: View {
             metadataRow("Size", sizeDescription(for: entry))
             metadataRow("Copies", entry.copyCount == 1 ? "Once" : "\(entry.copyCount) times")
 
-            if entry.kind == .text {
-                metadataRow("Language", entry.detectedLanguage ?? "Unknown")
-                metadataRow("Kind", entry.contentKind ?? "Text")
-                metadataRow("Links", entry.linkCount.map(String.init) ?? "Not analysed")
-            } else {
+            if entry.kind == .image {
                 if let width = entry.pixelWidth, let height = entry.pixelHeight, width > 0, height > 0 {
                     metadataRow("Dimensions", "\(width) × \(height) px")
                     metadataRow("Aspect ratio", aspectRatio(width: width, height: height))

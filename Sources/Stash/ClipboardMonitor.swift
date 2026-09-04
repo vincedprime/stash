@@ -24,18 +24,13 @@ final class ClipboardMonitor {
         let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
         let result: SaveResult
         if let string = pasteboard.string(forType: .string) {
-            result = store.saveText(string, sourceApp: sourceApp, metadata: textMetadata(for: string))
+            result = store.saveText(string, sourceApp: sourceApp)
         } else if let image = NSImage(pasteboard: pasteboard),
                   let capture = imageCapture(for: image, pasteboard: pasteboard) {
             result = store.saveImage(capture, sourceApp: sourceApp)
         }
         else { return }
         onSave?(result)
-    }
-
-    private func textMetadata(for text: String) -> TextMetadata {
-        // Do not scan clipboard text. This runs for every copy and must stay constant-time.
-        TextMetadata(detectedLanguage: nil, contentKind: "Text", linkCount: nil)
     }
 
     private func imageCapture(for image: NSImage, pasteboard: NSPasteboard) -> ImageCapture? {

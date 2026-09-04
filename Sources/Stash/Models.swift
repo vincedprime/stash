@@ -23,9 +23,6 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
     var isPinned: Bool
     let sourceApp: String?
     let copyCount: Int
-    let detectedLanguage: String?
-    let contentKind: String?
-    let linkCount: Int?
     let pixelWidth: Int?
     let pixelHeight: Int?
     let imageFormat: String?
@@ -40,12 +37,6 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
         case .image: return "Image"
         }
     }
-}
-
-struct TextMetadata: Sendable {
-    let detectedLanguage: String?
-    let contentKind: String
-    let linkCount: Int?
 }
 
 struct ImageMetadata: Sendable {
