@@ -17,9 +17,9 @@ jobs:
   package:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build Stash
-        run: scripts/build-app.sh
+        run: zsh scripts/build-app.sh
       - name: Create disk image
         run: |
           rm -f docs/downloads/Stash.dmg
