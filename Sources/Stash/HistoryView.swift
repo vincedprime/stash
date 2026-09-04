@@ -83,7 +83,7 @@ struct HistoryView: View {
 
             Divider()
 
-            HStack(spacing: 0) {
+            ZStack(alignment: .trailing) {
                 ScrollViewReader { proxy in
                     List(selection: $model.selectedID) {
                         ForEach(model.entries) { entry in
@@ -113,15 +113,20 @@ struct HistoryView: View {
                         }
                     }
                     .listStyle(.plain)
-                    .frame(width: 350)
+                    .frame(maxWidth: .infinity)
                     .onChange(of: model.selectedID) { _, selectedID in
                         if let selectedID { proxy.scrollTo(selectedID, anchor: .center) }
                     }
                 }
 
-                Divider()
-                ImagePreview(entry: model.selectedEntry, store: model.store)
-                    .frame(width: 300)
+                if let entry = model.selectedEntry, entry.kind == .image {
+                    ImagePreview(entry: entry, store: model.store)
+                        .frame(width: 280)
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(radius: 12)
+                        .padding(14)
+                }
             }
 
             Divider()
@@ -140,7 +145,7 @@ struct HistoryView: View {
             .padding(10)
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
         }
-        .frame(width: 650, height: 540)
+        .frame(width: 500, height: 540)
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .background(KeyEventMonitor { event in
