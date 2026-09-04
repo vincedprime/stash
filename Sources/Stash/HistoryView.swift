@@ -32,6 +32,11 @@ final class HistoryModel: ObservableObject {
     }
 
     func restoreSelection() { if let selectedEntry { restore(selectedEntry) } }
+    func deleteSelection() { if let selectedEntry { delete(selectedEntry) } }
+    func cycleFilter() {
+        guard let index = HistoryFilter.allCases.firstIndex(of: filter) else { return }
+        filter = HistoryFilter.allCases[(index + 1) % HistoryFilter.allCases.count]
+    }
     func setPaused(_ paused: Bool) { self.paused = paused; onPauseChanged?(paused) }
     func restore(_ entry: ClipboardEntry) { store.restore(entry); onRestore?(entry) }
     func togglePin(_ entry: ClipboardEntry) { store.setPinned(entry, pinned: !entry.isPinned); reload() }
@@ -77,6 +82,7 @@ struct HistoryView: View {
                     ForEach(HistoryFilter.allCases) { filter in Text(filter.rawValue).tag(filter) }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .frame(width: 210)
             }
             .padding(12)
@@ -149,6 +155,15 @@ struct HistoryView: View {
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .background(KeyEventMonitor { event in
+            let isOptionOnly = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .option
+            if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_X) {
+                model.deleteSelection()
+                return true
+            }
+            if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_Q) {
+                model.cycleFilter()
+                return true
+            }
             switch event.keyCode {
             case UInt16(kVK_UpArrow): model.moveSelection(by: -1); return true
             case UInt16(kVK_DownArrow): model.moveSelection(by: 1); return true
@@ -179,7 +194,6 @@ private struct ImagePreview: View {
             } else {
                 ContentUnavailableView("Image preview", systemImage: "photo", description: Text("Select an image to preview it."))
             }
-            Text("Selected image").font(.caption).foregroundStyle(.secondary)
         }
         .padding(12)
     }
