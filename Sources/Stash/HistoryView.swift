@@ -33,6 +33,7 @@ final class HistoryModel: ObservableObject {
 
     func restoreSelection() { if let selectedEntry { restore(selectedEntry) } }
     func deleteSelection() { if let selectedEntry { delete(selectedEntry) } }
+    func togglePinSelection() { if let selectedEntry { togglePin(selectedEntry) } }
     func cycleFilter() {
         guard let index = HistoryFilter.allCases.firstIndex(of: filter) else { return }
         filter = HistoryFilter.allCases[(index + 1) % HistoryFilter.allCases.count]
@@ -102,8 +103,6 @@ struct HistoryView: View {
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                 Spacer()
-                                Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 Button { model.togglePin(entry) } label: { Image(systemName: entry.isPinned ? "pin.fill" : "pin") }
                                     .buttonStyle(.borderless)
                                 Button { model.delete(entry) } label: { Image(systemName: "trash") }
@@ -112,7 +111,6 @@ struct HistoryView: View {
                             .tag(entry.id)
                             .id(entry.id)
                             .contentShape(Rectangle())
-                            .background(model.selectedID == entry.id ? Color.accentColor.opacity(0.20) : Color.clear)
                             .onTapGesture { model.selectedID = entry.id }
                             .onTapGesture(count: 2) { model.restore(entry) }
                             .frame(height: 46)
@@ -126,7 +124,7 @@ struct HistoryView: View {
                 }
 
                 Divider()
-                EntryViewer(entry: model.selectedEntry, store: model.store, onTogglePin: model.togglePin)
+                EntryViewer(entry: model.selectedEntry, store: model.store)
                     .frame(width: 320)
             }
 
@@ -135,6 +133,8 @@ struct HistoryView: View {
                 Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .file)) / 50 MB")
                 Button("Clear All") { model.clear() }
                 Spacer()
+                Text("↑↓ Navigate  ↩ Copy  ⌥P Pin  ⌥X Delete  ⌥Q Filter")
+                    .foregroundStyle(.secondary)
                 Toggle(model.paused ? "Recording paused" : "Recording", isOn: Binding(
                     get: { model.paused },
                     set: { model.setPaused($0) }
@@ -153,6 +153,10 @@ struct HistoryView: View {
             let isOptionOnly = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .option
             if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_X) {
                 model.deleteSelection()
+                return true
+            }
+            if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_P) {
+                model.togglePinSelection()
                 return true
             }
             if isOptionOnly, event.keyCode == UInt16(kVK_ANSI_Q) {
@@ -176,7 +180,6 @@ extension HistoryModel {
 private struct EntryViewer: View {
     let entry: ClipboardEntry?
     let store: ClipboardStore
-    let onTogglePin: (ClipboardEntry) -> Void
 
     var body: some View {
         Group {
@@ -185,10 +188,6 @@ private struct EntryViewer: View {
                     HStack {
                         Text(entry.kind == .image ? "Image" : "Text").font(.headline)
                         Spacer()
-                        Button { onTogglePin(entry) } label: {
-                            Label(entry.isPinned ? "Pinned" : "Pin", systemImage: entry.isPinned ? "pin.fill" : "pin")
-                        }
-                        .buttonStyle(.borderless)
                     }
                     Grid(alignment: .leading, verticalSpacing: 6) {
                         metadataRow("Copied", entry.createdAt.formatted(date: .long, time: .shortened))
