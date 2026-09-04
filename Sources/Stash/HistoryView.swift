@@ -4,7 +4,7 @@ import SwiftUI
 
 @MainActor
 final class HistoryModel: ObservableObject {
-    @Published var query = "" { didSet { reload() } }
+    @Published var query = "" { didSet { scheduleSearchReload() } }
     @Published var filter: HistoryFilter = .all { didSet { reload() } }
     @Published var entries: [ClipboardEntry] = []
     @Published var selectedID: ClipboardEntry.ID?
@@ -15,14 +15,55 @@ final class HistoryModel: ObservableObject {
     let store: ClipboardStore
     var onRestore: ((ClipboardEntry) -> Void)?
     var onPauseChanged: ((Bool) -> Void)?
+    private var searchTask: Task<Void, Never>?
+    private let thumbnailCache = NSCache<NSString, NSImage>()
+    private let imageCache = NSCache<NSString, NSImage>()
 
-    init(store: ClipboardStore) { self.store = store; reload() }
+    init(store: ClipboardStore) {
+        self.store = store
+        usage = store.byteUsage()
+        thumbnailCache.countLimit = 160
+        imageCache.countLimit = 3
+    }
     var selectedEntry: ClipboardEntry? { entries.first { $0.id == selectedID } }
 
     func reload() {
+        searchTask?.cancel()
         entries = store.entries(query: query, filter: filter)
         usage = store.byteUsage()
         if !entries.contains(where: { $0.id == selectedID }) { selectedID = entries.first?.id }
+    }
+
+    func noteHistoryChanged() {
+        usage = store.byteUsage()
+        if isPresented { reload() }
+    }
+
+    func thumbnail(for entry: ClipboardEntry) -> NSImage? {
+        guard let path = entry.thumbnailPath ?? entry.imagePath else { return nil }
+        let key = path as NSString
+        if let image = thumbnailCache.object(forKey: key) { return image }
+        guard let image = NSImage(contentsOf: store.imageURL(path)) else { return nil }
+        thumbnailCache.setObject(image, forKey: key)
+        return image
+    }
+
+    func image(for entry: ClipboardEntry) -> NSImage? {
+        guard let path = entry.imagePath else { return nil }
+        let key = path as NSString
+        if let image = imageCache.object(forKey: key) { return image }
+        guard let image = NSImage(contentsOf: store.imageURL(path)) else { return nil }
+        imageCache.setObject(image, forKey: key)
+        return image
+    }
+
+    private func scheduleSearchReload() {
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            self?.reload()
+        }
     }
 
     func moveSelection(by offset: Int) {
@@ -105,8 +146,7 @@ struct HistoryView: View {
                     List(selection: $model.selectedID) {
                         ForEach(model.entries) { entry in
                             HStack(spacing: 10) {
-                                if entry.kind == .image, let path = entry.imagePath,
-                                   let image = NSImage(contentsOf: model.storeImageURL(path)) {
+                                if entry.kind == .image, let image = model.thumbnail(for: entry) {
                                     Image(nsImage: image).resizable().scaledToFit().frame(width: 28, height: 28)
                                 }
                                 Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
@@ -135,7 +175,7 @@ struct HistoryView: View {
                 }
 
                 Divider()
-                EntryViewer(entry: model.selectedEntry, store: model.store)
+                EntryViewer(entry: model.selectedEntry, model: model)
                     .frame(width: 320)
             }
 
@@ -203,13 +243,9 @@ struct HistoryView: View {
     }
 }
 
-extension HistoryModel {
-    func storeImageURL(_ path: String) -> URL { store.imageURL(path) }
-}
-
 private struct EntryViewer: View {
     let entry: ClipboardEntry?
-    let store: ClipboardStore
+    let model: HistoryModel
 
     var body: some View {
         Group {
@@ -219,8 +255,7 @@ private struct EntryViewer: View {
                         Text(entry.kind == .image ? "Image" : "Text").font(.headline)
                         Spacer()
                     }
-                    if entry.kind == .image, let path = entry.imagePath,
-                       let image = NSImage(contentsOf: store.imageURL(path)) {
+                    if entry.kind == .image, let image = model.image(for: entry) {
                         Image(nsImage: image)
                             .resizable()
                             .scaledToFit()
@@ -242,10 +277,7 @@ private struct EntryViewer: View {
     }
 
     private func sizeDescription(for entry: ClipboardEntry) -> String {
-        let bytes = ByteCountFormatter.string(fromByteCount: Int64(entry.byteCount), countStyle: .file)
-        guard entry.kind == .text, let text = entry.text else { return bytes }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).count
-        return "\(text.count) characters · \(lines) \(lines == 1 ? "line" : "lines") · \(bytes)"
+        ByteCountFormatter.string(fromByteCount: Int64(entry.byteCount), countStyle: .file)
     }
 
     @ViewBuilder
@@ -259,7 +291,7 @@ private struct EntryViewer: View {
             if entry.kind == .text {
                 metadataRow("Language", entry.detectedLanguage ?? "Unknown")
                 metadataRow("Kind", entry.contentKind ?? "Text")
-                metadataRow("Links", "\(entry.linkCount ?? 0)")
+                metadataRow("Links", entry.linkCount.map(String.init) ?? "Not analysed")
             } else {
                 if let width = entry.pixelWidth, let height = entry.pixelHeight, width > 0, height > 0 {
                     metadataRow("Dimensions", "\(width) × \(height) px")

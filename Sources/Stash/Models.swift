@@ -29,10 +29,14 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
     let pixelWidth: Int?
     let pixelHeight: Int?
     let imageFormat: String?
+    let thumbnailPath: String?
 
     var preview: String {
         switch kind {
-        case .text: return text?.replacingOccurrences(of: "\n", with: " ") ?? ""
+        case .text:
+            // Keep list rendering proportional to the preview, not to the copied item.
+            let excerpt = text?.prefix(360) ?? ""
+            return excerpt.replacingOccurrences(of: "\n", with: " ")
         case .image: return "Image"
         }
     }
@@ -41,13 +45,19 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
 struct TextMetadata: Sendable {
     let detectedLanguage: String?
     let contentKind: String
-    let linkCount: Int
+    let linkCount: Int?
 }
 
 struct ImageMetadata: Sendable {
     let pixelWidth: Int
     let pixelHeight: Int
     let imageFormat: String?
+}
+
+struct ImageCapture: Sendable {
+    let pngData: Data
+    let thumbnailData: Data
+    let metadata: ImageMetadata
 }
 
 enum SaveResult: Equatable { case saved, duplicate, paused, full }

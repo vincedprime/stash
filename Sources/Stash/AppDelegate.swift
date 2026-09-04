@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 monitor?.isPaused = paused
             }
             monitor.onSave = { [weak model] result in
-                switch result { case .saved: model?.reload(); case .full: model?.message = "History is full. Delete or unpin items to resume recording."; default: break }
+                switch result { case .saved: model?.noteHistoryChanged(); case .full: model?.message = "History is full. Delete or unpin items to resume recording."; default: break }
             }
             self.monitor = monitor
             monitor.start()
