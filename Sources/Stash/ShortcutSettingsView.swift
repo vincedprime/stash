@@ -90,12 +90,13 @@ struct ShortcutSettingsView: View {
 struct HotKeyRecorder: NSViewRepresentable {
     @Binding var binding: HotKeyBinding
     let requiresModifier: Bool
-    func makeNSView(context: Context) -> RecorderButton { let button = RecorderButton(); button.onCapture = { binding = $0 }; button.requiresModifier = requiresModifier; button.title = binding.display; return button }
-    func updateNSView(_ button: RecorderButton, context: Context) { button.onCapture = { binding = $0 }; button.requiresModifier = requiresModifier; if !button.isRecording { button.title = binding.display } }
+    func makeNSView(context: Context) -> RecorderButton { let button = RecorderButton(); button.onCapture = { binding = $0 }; button.onCancel = { button.title = binding.display }; button.requiresModifier = requiresModifier; button.title = binding.display; return button }
+    func updateNSView(_ button: RecorderButton, context: Context) { button.onCapture = { binding = $0 }; button.onCancel = { button.title = binding.display }; button.requiresModifier = requiresModifier; if !button.isRecording { button.title = binding.display } }
 }
 final class RecorderButton: NSButton {
-    var onCapture: ((HotKeyBinding) -> Void)?; var requiresModifier = false; var isRecording = false
+    var onCapture: ((HotKeyBinding) -> Void)?; var onCancel: (() -> Void)?; var requiresModifier = false; var isRecording = false
     override var acceptsFirstResponder: Bool { true }
     override func mouseDown(with event: NSEvent) { isRecording = true; title = "Press shortcut…"; window?.makeFirstResponder(self) }
     override func keyDown(with event: NSEvent) { if event.keyCode == UInt16(kVK_Escape) { isRecording = false; return }; guard let binding = HotKeyBinding.from(event, requiresModifier: requiresModifier) else { NSSound.beep(); return }; isRecording = false; onCapture?(binding) }
+    override func resignFirstResponder() -> Bool { let shouldRestore = isRecording; isRecording = false; if shouldRestore { onCancel?() }; return super.resignFirstResponder() }
 }

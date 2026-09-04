@@ -4,6 +4,7 @@ import SwiftUI
 final class HistoryPanel: NSPanel {
     var onResignKey: (() -> Void)?
     override func resignKey() { super.resignKey(); onResignKey?() }
+    override func resignMain() { super.resignMain(); onResignKey?() }
 }
 
 @MainActor
@@ -67,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         quit.target = NSApp
     }
 
+    func menuWillOpen(_ menu: NSMenu) { hidePanel() }
+
     @objc private func showSettings() {
         let panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
         let view = ShortcutSettingsView(open: openBinding, recording: recordingBinding, panel: panelBindings) { [weak self] open, record, panel in
@@ -112,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.title = "Stash"
             panel.isFloatingPanel = true
             panel.hidesOnDeactivate = true
+            panel.collectionBehavior = [.transient]
             panel.delegate = self
             panel.onResignKey = { [weak self] in self?.hidePanel() }
             panel.contentView = NSHostingView(rootView: HistoryView(model: model))
