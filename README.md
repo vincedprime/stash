@@ -96,7 +96,7 @@ Clipboard history is kept so it can be restored after reinstalling. To permanent
 
 ```sh
 rm -rf "$HOME/Library/Application Support/Stash"
-defaults delete com.vinay.stash 2>/dev/null || true
+defaults delete com.vinylstack.stash 2>/dev/null || true
 ```
 
 ## Development

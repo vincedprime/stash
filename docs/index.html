@@ -104,9 +104,9 @@
       <section>
         <h2>Uninstall</h2>
         <p>Quit Stash and remove the app and its optional launch-at-login entry:</p>
-        <div class="command"><code id="uninstall-command">pkill -x Stash 2&gt;/dev/null || true; launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinay.stash.plist" 2&gt;/dev/null || true; rm -f "$HOME/Library/LaunchAgents/com.vinay.stash.plist"; rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"</code><button class="copy" type="button" data-target="uninstall-command" aria-describedby="uninstall-note">Copy</button></div>
+        <div class="command"><code id="uninstall-command">pkill -x Stash 2&gt;/dev/null || true; launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist" 2&gt;/dev/null || true; rm -f "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist"; rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"</code><button class="copy" type="button" data-target="uninstall-command" aria-describedby="uninstall-note">Copy</button></div>
         <p id="uninstall-note" class="note">Clipboard history remains available if you reinstall. To permanently erase all history and settings too, run:</p>
-        <div class="command"><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"; defaults delete com.vinay.stash 2&gt;/dev/null || true</code><button class="copy" type="button" data-target="erase-command">Copy</button></div>
+        <div class="command"><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"; defaults delete com.vinylstack.stash 2&gt;/dev/null || true</code><button class="copy" type="button" data-target="erase-command">Copy</button></div>
       </section>
 
       <footer>Stash is open source and stores supported clipboard history locally on your Mac.</footer>
