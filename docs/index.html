@@ -60,10 +60,10 @@
       <div class="hero">
         <div>
           <h1>Your clipboard,<br>kept locally.</h1>
-          <p class="lead">Stash is a fast macOS clipboard manager for text and images. It runs from your menu bar, stores history only on your Mac, and needs no account or Accessibility permission.</p>
+          <p class="lead">A fast clipboard manager. Keyboard shortcut first.</p>
           <a class="download" href="https://github.com/vincedprime/stash/releases/latest/download/Stash.dmg">Download for Apple Silicon</a>
-          <p class="release">Current build · macOS 15 or later · Apple Silicon</p>
-          <div class="warning"><span>ⓘ</span><span><strong>Unsigned weekend build.</strong> Install it with the one Terminal command below after downloading.</span></div>
+          <p class="release">macOS 15 or later · Apple Silicon</p>
+          <div class="warning"><span>ⓘ</span><span><strong>Unsigned build.</strong> Install it with the one Terminal command below after downloading. As this was something I wanted so it doesn't make sense to pay apple $99/year for my own utitlity which nobody else gonna use.</span></div>
         </div>
         <div class="preview" aria-label="Preview of the Stash clipboard history panel">
           <div class="preview-bar"><span class="dots"><i></i><i></i><i></i></span><span class="preview-title">Stash</span></div>
@@ -84,9 +84,9 @@
       <section>
         <h2>Built for retrieval, not surveillance.</h2>
         <div class="features">
-          <div class="feature"><h3>Private by default</h3><p>History, images, and metadata stay in your local Application Support folder. No cloud sync or analytics.</p></div>
+          <div class="feature"><h3>Private by default</h3><p>Everything stay in your local. No data is sent anywhere.</p></div>
           <div class="feature"><h3>Keyboard-first</h3><p>Search, navigate, restore, pin, delete, and filter clipboard history without leaving your current task.</p></div>
-          <div class="feature"><h3>Useful context</h3><p>See source app, copied time, size, copy count, and full text or image details for every new item.</p></div>
+          <div class="feature"><h3>Useful context</h3><p>See source app, copied time, size, copy count, and full text or image details.</p></div>
         </div>
       </section>
 
@@ -109,7 +109,7 @@
         <div class="command"><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"; defaults delete com.vinylstack.stash 2&gt;/dev/null || true</code><button class="copy" type="button" data-target="erase-command">Copy</button></div>
       </section>
 
-      <footer>Stash is open source and stores supported clipboard history locally on your Mac.</footer>
+      <footer>I made it becuase I company flagged Raycast and removed it. If you had same issue then use it too.</footer>
     </main>
     <script>
       document.querySelectorAll('.copy').forEach((copyButton) => {
