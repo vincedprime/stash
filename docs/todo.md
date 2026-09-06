@@ -1,0 +1,8 @@
+- [ ] Add support for links, files & colors - some thinking on Context switch
+- [ ] Add configuration to change clipboard storage size
+- [ ] 1 bug fix - selection of items are both grey and blue - stick to blue. Tab switch issue
+- [ ] Option to delete all entries
+- [ ] Option to delete entries of last n mins
+- [ ] Auto delete after some time
+- [ ] Add content type in metadata
+- [ ] Edit content
