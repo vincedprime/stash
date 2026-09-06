@@ -99,6 +99,7 @@
         <div class="command"><code id="install-command">cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code><button class="copy" type="button" data-target="install-command" aria-describedby="install-note">Copy</button></div>
         <p id="install-note" class="note">This copies Stash to Applications, removes the download quarantine for this unsigned build, and opens it. A managed Mac may require administrator approval.</p>
         <p>Then click the Stash menu-bar icon or press <code>⌥Space</code> to search clipboard history.</p>
+        <p>If your laptop doesn't have accessibity issue which is the main reason I made this tool, then copy it to some otther folder instead of /Applications</p>
       </section>
 
       <section>
@@ -109,7 +110,7 @@
         <div class="command"><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"; defaults delete com.vinylstack.stash 2&gt;/dev/null || true</code><button class="copy" type="button" data-target="erase-command">Copy</button></div>
       </section>
 
-      <footer>I made it becuase I company flagged Raycast and removed it. If you had same issue then use it too.</footer>
+      <footer>I made it becuase I company flagged Raycast and removed it.</footer>
     </main>
     <script>
       document.querySelectorAll('.copy').forEach((copyButton) => {
