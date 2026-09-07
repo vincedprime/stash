@@ -7,4 +7,4 @@
 - [ ] Add content type in metadata
 - [ ] Edit content
 - [ ] Export and import data
-- [ ] snippets !? need to check usefulness as if i want to use it or not as I use obsidian for this usecase
+- [ ] ability to add tags. so search can happen by tags as well
