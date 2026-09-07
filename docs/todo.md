@@ -9,3 +9,5 @@
 - [ ] Export and import data
 - [ ] ability to add tags. so search can happen by tags as well
 - [ ] Allow copy from stash viewer
+- [ ] Understand why common text-editing keyboard shortcuts is not happenign and has to code it explicity. Like Undo, redo, copy, copy, paste, etc, in seach
+- [ ] Remove ci/cd in docs update
