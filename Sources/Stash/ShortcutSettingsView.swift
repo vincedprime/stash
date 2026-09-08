@@ -70,10 +70,8 @@ struct ShortcutSettingsView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-         ScrollView {
-          VStack(alignment: .leading, spacing: 14) {
-            Text("Settings").font(.title2.weight(.semibold))
-            Text("History").font(.headline)
+         Form {
+          Section("History") {
             Picker("Storage limit", selection: $storageLimit) {
                 ForEach([25, 50, 100, 250], id: \.self) { size in Text("\(size) MB").tag(size * 1024 * 1024) }
             }
@@ -85,27 +83,33 @@ struct ShortcutSettingsView: View {
             }
             Text("Checks at launch and every minute. Age starts from the most recent copy. Pinned items are kept. Saving a shorter duration or lower storage limit may remove unpinned history immediately.")
                 .font(.caption).foregroundStyle(.secondary)
-            Divider()
-            Text("Click a shortcut, then press your preferred key combination.").font(.subheadline).foregroundStyle(.secondary)
-            Divider()
-            Text("Global shortcuts").font(.headline)
+          }
+          Section {
             row("Open Stash", binding: $openShortcut, requiresModifier: true)
             row("Toggle recording", binding: $recordingShortcut, requiresModifier: true)
-            Divider()
-            Text("History shortcuts").font(.headline)
+          } header: {
+            Text("Global shortcuts")
+          } footer: {
+            Text("Click a shortcut, then press your preferred key combination.")
+          }
+          Section("History shortcuts") {
             ForEach(PanelShortcut.allCases) { action in row(action.title, binding: binding(for: action), requiresModifier: false) }
-          }.padding(22)
+          }
          }
+         .formStyle(.grouped)
          Divider()
          VStack(alignment: .leading, spacing: 8) {
             if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
             HStack {
                 Button("Reset shortcuts") { openShortcut = .openDefault; recordingShortcut = .recordDefault; panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, $0.defaultBinding) }) }
+                    .modifier(StashActionStyle())
                 Spacer()
                 Button(saved ? "Saved" : "Save changes") { save() }.keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
             }
          }.padding(16)
         }.frame(width: 460, height: 620)
+         .background(StashPanelBackground())
     }
     private func row(_ title: String, binding: Binding<HotKeyBinding>, requiresModifier: Bool) -> some View { HStack { Text(title).font(.body.weight(.medium)); Spacer(); HotKeyRecorder(binding: binding, requiresModifier: requiresModifier).frame(width: 150, height: 30) } }
     private func binding(for action: PanelShortcut) -> Binding<HotKeyBinding> { Binding(get: { panelBindings[action] ?? action.defaultBinding }, set: { panelBindings[action] = $0 }) }
@@ -122,7 +126,7 @@ struct ShortcutSettingsView: View {
 struct HotKeyRecorder: NSViewRepresentable {
     @Binding var binding: HotKeyBinding
     let requiresModifier: Bool
-    func makeNSView(context: Context) -> RecorderButton { let button = RecorderButton(); button.onCapture = { binding = $0 }; button.onCancel = { button.title = binding.display }; button.requiresModifier = requiresModifier; button.title = binding.display; return button }
+    func makeNSView(context: Context) -> RecorderButton { let button = RecorderButton(); button.bezelStyle = .rounded; button.setButtonType(.momentaryPushIn); button.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular); button.onCapture = { binding = $0 }; button.onCancel = { button.title = binding.display }; button.requiresModifier = requiresModifier; button.title = binding.display; return button }
     func updateNSView(_ button: RecorderButton, context: Context) { button.onCapture = { binding = $0 }; button.onCancel = { button.title = binding.display }; button.requiresModifier = requiresModifier; if !button.isRecording { button.title = binding.display } }
 }
 final class RecorderButton: NSButton {

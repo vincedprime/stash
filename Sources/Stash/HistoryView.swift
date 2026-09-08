@@ -208,8 +208,6 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             toolbar
 
-            Divider()
-
             HStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -232,15 +230,21 @@ struct HistoryView: View {
                             .id(entry.id)
                             .frame(height: 38)
                             .padding(.horizontal, 10)
-                            .background(model.selectedID == entry.id ? Color.gray.opacity(0.4) : Color.clear)
-                            .contentShape(Rectangle())
+                            .background {
+                                if model.selectedID == entry.id {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
+                                }
+                            }
+                            .contentShape(RoundedRectangle(cornerRadius: 8))
                             .onTapGesture(count: 2) { model.restore(entry) }
                             .onTapGesture { model.selectedID = entry.id }
                             .onAppear { model.loadNextPage(ifLast: entry.id) }
                             .accessibilityAddTraits(model.selectedID == entry.id ? [.isSelected] : [])
-                            Divider()
                         }
                       }
+                      .padding(.horizontal, 8)
+                      .padding(.vertical, 6)
                     }
                     .frame(width: 420)
                     .onChange(of: model.selectedID) { _, selectedID in
@@ -251,7 +255,8 @@ struct HistoryView: View {
                 Divider()
                 EntryViewer(entry: model.inspectorEntry, model: model)
                     .id(model.selectedID)
-                    .frame(width: 320)
+                    .frame(width: 319)
+                    .background(Color(nsColor: .textBackgroundColor))
             }
 
             Divider()
@@ -272,6 +277,7 @@ struct HistoryView: View {
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
         }
         .frame(width: 740, height: 540)
+        .background(StashPanelBackground())
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
         .onChange(of: model.isEditingInspector) { _, editing in if editing { searchIsFocused = false } }
@@ -315,6 +321,9 @@ struct HistoryView: View {
             .labelsHidden()
             .frame(width: 320)
         }
+        .controlSize(.regular)
+        .padding(10)
+        .modifier(StashToolbarSurface())
         .padding(12)
     }
 
@@ -334,7 +343,10 @@ struct HistoryView: View {
             Toggle(model.paused ? "Recording paused" : "Recording", isOn: Binding(get: { model.paused }, set: { model.setPaused($0) }))
                 .toggleStyle(.switch).controlSize(.small)
         }
-        .font(.caption).padding(10)
+        .font(.caption)
+        .controlSize(.small)
+        .modifier(StashActionStyle())
+        .padding(12)
     }
 }
 
@@ -385,6 +397,7 @@ private struct EntryViewer: View {
                             Button((entry.tags ?? "").isEmpty ? "Add tags" : "Edit tags") { tagging = true }
                         }
                         .controlSize(.small)
+                        .modifier(StashActionStyle())
                     }
                     if tagging {
                         EntryTagsEditor(entry: entry, model: model) { tagging = false }

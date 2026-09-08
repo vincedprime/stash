@@ -92,6 +92,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if settingsPanel == nil {
             let panel = TransientPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 620), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash Settings"
+            panel.titlebarAppearsTransparent = true
+            panel.titlebarSeparatorStyle = .none
             panel.isFloatingPanel = true
             panel.hidesOnDeactivate = true
             panel.collectionBehavior = [.transient]
@@ -150,6 +152,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if panel == nil {
             let panel = HistoryPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash"
+            panel.titlebarAppearsTransparent = true
+            panel.titlebarSeparatorStyle = .none
             panel.isFloatingPanel = true
             panel.hidesOnDeactivate = true
             panel.collectionBehavior = [.transient]

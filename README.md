@@ -66,6 +66,8 @@ This copies Stash to Applications, clears macOS’s download quarantine for this
 
 ## Use Stash
 
+On macOS Tahoe, Stash uses native glass controls, a system material background, rounded grey selection, and grouped settings. The preview pane stays opaque for readability. Older supported macOS versions use standard bordered controls; system appearance and reduced-transparency preferences are respected.
+
 - Click the menu-bar icon or press `Option-Space` to open history.
 - Type in the search field to find copied content or saved tags. Use **Links** or **Colors** to narrow the history.
 - Select an item to put it back on the clipboard, then paste into your app with `Command-V`.
