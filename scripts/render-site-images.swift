@@ -8,6 +8,7 @@ struct SiteImages {
     static func main() throws {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("stash-site-\(UUID())")
         let suite = "stash-site-\(UUID())"
@@ -79,13 +80,13 @@ struct SiteImages {
     }
 
     private static func render(_ view: some View, width: CGFloat, height: CGFloat, to url: URL) throws {
-        // Use native light appearance for clear, consistent documentation images.
+        // Use native dark appearance for clear, consistent documentation images.
         let host = NSHostingView(rootView: view
-            .environment(\.colorScheme, .light)
+            .environment(\.colorScheme, .dark)
             .environment(\.locale, Locale(identifier: "en_US")))
         let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled], backing: .buffered, defer: false)
-        window.appearance = NSAppearance(named: .aqua)
+        window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = host
         host.frame = NSRect(x: 0, y: 0, width: width, height: height)
         host.layoutSubtreeIfNeeded()

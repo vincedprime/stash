@@ -11,8 +11,11 @@ Regenerate on an Apple Silicon Mac with the project's Swift toolchain:
 zsh scripts/render-site-images.sh
 ```
 
-The renderer uses light appearance and offscreen bitmap snapshots of native
-views. Tahoe's live glass compositing can differ. It uses a temporary database, files, and preferences and removes them
+The renderer uses dark appearance and offscreen bitmap snapshots of native
+views. Its isolated build selects the app's existing bordered-control fallback,
+because bitmap snapshots cannot capture Tahoe's WindowServer glass compositing.
+The shipping source and installed app are unchanged. It uses a temporary database,
+files, and preferences and removes them
 after rendering. It does not install, restart, or change the running app.
 
 Review all four images after regeneration, especially text wrapping, selected
