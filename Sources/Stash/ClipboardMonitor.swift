@@ -28,6 +28,10 @@ final class ClipboardMonitor {
         } else if let image = NSImage(pasteboard: pasteboard),
                   let capture = imageCapture(for: image, pasteboard: pasteboard) {
             result = store.saveImage(capture, sourceApp: sourceApp)
+        } else if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            result = store.saveFiles(urls, sourceApp: sourceApp)
+        } else if let color = NSColor(from: pasteboard) {
+            result = store.saveColor(color, sourceApp: sourceApp)
         }
         else { return }
         onSave?(result)

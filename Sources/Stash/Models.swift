@@ -1,15 +1,19 @@
 import Foundation
 
-enum EntryKind: String, Codable, Sendable { case text, image }
+enum EntryKind: String, Codable, Sendable { case text, image, file, color
+    var title: String { rawValue.capitalized }
+}
 
 enum HistoryFilter: String, CaseIterable, Identifiable, Sendable {
     case all = "All"
     case text = "Text"
     case image = "Images"
+    case file = "Files"
+    case color = "Colors"
 
     var id: Self { self }
     var kind: EntryKind? {
-        switch self { case .all: nil; case .text: .text; case .image: .image }
+        switch self { case .all: nil; case .text: .text; case .image: .image; case .file: .file; case .color: .color }
     }
 }
 
@@ -27,6 +31,7 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
     let pixelHeight: Int?
     let imageFormat: String?
     let thumbnailPath: String?
+    let tags: String?
 
     var preview: String {
         switch kind {
@@ -35,6 +40,8 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
             let excerpt = text?.prefix(360) ?? ""
             return excerpt.replacingOccurrences(of: "\n", with: " ")
         case .image: return "Image"
+        case .file: return URL(fileURLWithPath: text ?? "").lastPathComponent
+        case .color: return text ?? "Color"
         }
     }
 }

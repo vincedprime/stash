@@ -6,13 +6,16 @@ private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.sel
 
 @MainActor
 final class ClipboardStore {
-    static let maximumBytes = 50 * 1024 * 1024
+    static let defaultMaximumBytes = 50 * 1024 * 1024
     private var database: OpaquePointer?
     private let root: URL
     private let images: URL
     private var cachedByteUsage = 0
+    private(set) var maximumBytes: Int
 
     init(root: URL? = nil) throws {
+        let savedLimit = UserDefaults.standard.integer(forKey: "storageLimitBytes")
+        self.maximumBytes = savedLimit > 0 ? savedLimit : Self.defaultMaximumBytes
         self.root = try root ?? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("Stash", isDirectory: true)
         self.images = self.root.appendingPathComponent("images", isDirectory: true)
@@ -24,7 +27,7 @@ final class ClipboardStore {
           text TEXT, image_path TEXT, byte_count INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0,
           source_app TEXT, copy_count INTEGER NOT NULL DEFAULT 1,
           pixel_width INTEGER, pixel_height INTEGER, image_format TEXT,
-          thumbnail_path TEXT
+          thumbnail_path TEXT, tags TEXT
         ); CREATE INDEX IF NOT EXISTS entries_created ON entries(created_at DESC);
         CREATE INDEX IF NOT EXISTS entries_unpinned_oldest ON entries(pinned, created_at ASC);
         """)
@@ -34,6 +37,7 @@ final class ClipboardStore {
         try? execute("ALTER TABLE entries ADD COLUMN pixel_height INTEGER")
         try? execute("ALTER TABLE entries ADD COLUMN image_format TEXT")
         try? execute("ALTER TABLE entries ADD COLUMN thumbnail_path TEXT")
+        try? execute("ALTER TABLE entries ADD COLUMN tags TEXT")
         cachedByteUsage = scalarInt("SELECT COALESCE(SUM(byte_count), 0) FROM entries")
     }
 
@@ -43,12 +47,15 @@ final class ClipboardStore {
         let searchText = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var clauses: [String] = []
         if let kind = filter.kind { clauses.append("kind = '\(kind.rawValue)'") }
-        if !searchText.isEmpty { clauses.append("text LIKE ?") }
+        if !searchText.isEmpty { clauses.append("(text LIKE ? OR tags LIKE ?)") }
         let whereClause = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
-        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
+        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path,tags FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
-        if !searchText.isEmpty { sqlite3_bind_text(statement, 1, "%\(searchText)%", -1, SQLITE_TRANSIENT) }
+        if !searchText.isEmpty {
+            sqlite3_bind_text(statement, 1, "%\(searchText)%", -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 2, "%\(searchText)%", -1, SQLITE_TRANSIENT)
+        }
         var result: [ClipboardEntry] = []
         while sqlite3_step(statement) == SQLITE_ROW, let entry = decode(statement) { result.append(entry) }
         return result
@@ -56,6 +63,12 @@ final class ClipboardStore {
 
     func byteUsage() -> Int {
         cachedByteUsage
+    }
+
+    func setMaximumBytes(_ value: Int) {
+        maximumBytes = value
+        UserDefaults.standard.set(value, forKey: "storageLimitBytes")
+        makeRoom(for: 0)
     }
 
     func saveText(_ text: String, sourceApp: String?) -> SaveResult {
@@ -73,6 +86,39 @@ final class ClipboardStore {
             return .saved
         }
         return insert(kind: .image, text: nil, imageData: capture.pngData, thumbnailData: capture.thumbnailData, sourceApp: sourceApp, imageMetadata: capture.metadata)
+    }
+
+    func saveFiles(_ urls: [URL], sourceApp: String?) -> SaveResult {
+        let paths = urls.map(\.path).joined(separator: "\n")
+        guard !paths.isEmpty else { return .duplicate }
+        return insert(kind: .file, text: paths, imageData: nil, sourceApp: sourceApp, imageMetadata: nil)
+    }
+
+    func saveColor(_ color: NSColor, sourceApp: String?) -> SaveResult {
+        guard let rgb = color.usingColorSpace(.deviceRGB) else { return .duplicate }
+        let hex = String(format: "#%02X%02X%02X", Int(rgb.redComponent * 255), Int(rgb.greenComponent * 255), Int(rgb.blueComponent * 255))
+        return insert(kind: .color, text: hex, imageData: nil, sourceApp: sourceApp, imageMetadata: nil)
+    }
+
+    func setTags(_ tags: String, for entry: ClipboardEntry) {
+        executeQuietly("UPDATE entries SET tags = ? WHERE id = ?", bindings: [.optionalText(tags.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : tags), .text(entry.id.uuidString)])
+    }
+
+    func updateText(_ text: String, for entry: ClipboardEntry) -> Bool {
+        guard entry.kind == .text, !text.isEmpty else { return false }
+        let newBytes = text.utf8.count
+        guard cachedByteUsage - entry.byteCount + newBytes <= maximumBytes else { return false }
+        executeQuietly("UPDATE entries SET text = ?, byte_count = ? WHERE id = ?", bindings: [.text(text), .int(newBytes), .text(entry.id.uuidString)])
+        cachedByteUsage += newBytes - entry.byteCount
+        return true
+    }
+
+    func deleteEntries(since date: Date) {
+        entries().filter { $0.createdAt >= date && !$0.isPinned }.forEach(delete)
+    }
+
+    func deleteEntries(before date: Date) {
+        entries().filter { $0.createdAt < date && !$0.isPinned }.forEach(delete)
     }
 
     func setPinned(_ entry: ClipboardEntry, pinned: Bool) {
@@ -105,7 +151,10 @@ final class ClipboardStore {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         switch entry.kind {
-        case .text: pasteboard.setString(entry.text ?? "", forType: .string)
+        case .text, .color: pasteboard.setString(entry.text ?? "", forType: .string)
+        case .file:
+            let urls = (entry.text ?? "").split(separator: "\n").map { URL(fileURLWithPath: String($0)) }
+            pasteboard.writeObjects(urls as [NSURL])
         case .image:
             guard let path = entry.imagePath, let image = NSImage(contentsOf: root.appendingPathComponent(path)) else { return }
             pasteboard.writeObjects([image])
@@ -116,9 +165,9 @@ final class ClipboardStore {
 
     private func insert(kind: EntryKind, text: String?, imageData: Data?, thumbnailData: Data? = nil, sourceApp: String?, imageMetadata: ImageMetadata?) -> SaveResult {
         let bytes = (imageData?.count ?? (text?.utf8.count ?? 0)) + (thumbnailData?.count ?? 0)
-        guard bytes <= Self.maximumBytes else { return .full }
+        guard bytes <= maximumBytes else { return .full }
         makeRoom(for: bytes)
-        guard byteUsage() + bytes <= Self.maximumBytes else { return .full }
+        guard byteUsage() + bytes <= maximumBytes else { return .full }
         let id = UUID()
         let relativePath: String?
         let thumbnailPath: String?
@@ -130,9 +179,9 @@ final class ClipboardStore {
             do { try thumbnailData?.write(to: root.appendingPathComponent(thumbnailPath!), options: .atomic) }
             catch { try? FileManager.default.removeItem(at: root.appendingPathComponent(relativePath!)); return .full }
         } else { relativePath = nil; thumbnailPath = nil }
-        executeQuietly("INSERT INTO entries(id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path) VALUES(?,?,?,?,?,?,0,?,1,?,?,?,?)", bindings: [
+        executeQuietly("INSERT INTO entries(id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path,tags) VALUES(?,?,?,?,?,?,0,?,1,?,?,?,?,?)", bindings: [
             .text(id.uuidString), .double(Date().timeIntervalSince1970), .text(kind.rawValue), .optionalText(text), .optionalText(relativePath), .int(bytes), .optionalText(sourceApp),
-            .optionalInt(imageMetadata?.pixelWidth), .optionalInt(imageMetadata?.pixelHeight), .optionalText(imageMetadata?.imageFormat), .optionalText(thumbnailPath)
+            .optionalInt(imageMetadata?.pixelWidth), .optionalInt(imageMetadata?.pixelHeight), .optionalText(imageMetadata?.imageFormat), .optionalText(thumbnailPath), .optionalText(nil)
         ])
         cachedByteUsage += bytes
         return .saved
@@ -145,18 +194,18 @@ final class ClipboardStore {
     }
 
     private func makeRoom(for bytes: Int) {
-        while cachedByteUsage + bytes > Self.maximumBytes {
+        while cachedByteUsage + bytes > maximumBytes {
             guard let oldest = oldestUnpinnedEntry() else { return }
             delete(oldest)
         }
     }
 
     private func newestEntry() -> ClipboardEntry? {
-        fetchOne("SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path FROM entries ORDER BY created_at DESC LIMIT 1")
+        fetchOne("SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path,tags FROM entries ORDER BY created_at DESC LIMIT 1")
     }
 
     private func oldestUnpinnedEntry() -> ClipboardEntry? {
-        fetchOne("SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path FROM entries WHERE pinned = 0 ORDER BY created_at ASC LIMIT 1")
+        fetchOne("SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path,tags FROM entries WHERE pinned = 0 ORDER BY created_at ASC LIMIT 1")
     }
 
     private func fetchOne(_ sql: String) -> ClipboardEntry? {
@@ -202,6 +251,7 @@ final class ClipboardStore {
           pixelWidth: sqlite3_column_type(statement, 9) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(statement, 9)),
           pixelHeight: sqlite3_column_type(statement, 10) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(statement, 10)),
           imageFormat: sqlite3_column_text(statement, 11).map { String(cString: $0) },
-          thumbnailPath: sqlite3_column_text(statement, 12).map { String(cString: $0) })
+          thumbnailPath: sqlite3_column_text(statement, 12).map { String(cString: $0) },
+          tags: sqlite3_column_text(statement, 13).map { String(cString: $0) })
     }
 }
