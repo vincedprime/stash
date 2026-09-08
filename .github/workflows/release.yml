@@ -3,6 +3,13 @@ name: Publish release
 on:
   push:
     branches: [main]
+    # Only skip this app release workflow; GitHub Pages deploys independently.
+    # Mixed documentation and app changes still build and publish a DMG.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'scripts/render-site-images.sh'
+      - 'scripts/render-site-images.swift'
 
 permissions:
   contents: write

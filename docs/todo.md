@@ -5,11 +5,11 @@ Reviewed against `main` after the metadata-inspector merge (`49b7367`).
 ## Open
 
 - [ ] Export and import clipboard history.
-- [ ] Skip app builds and DMG releases for documentation-only changes. Keep landing-page deployment enabled.
 - [ ] Replace landing-page offscreen renders with actual macOS window screenshots using sample clipboard content.
 
 ## Done
 
+- [x] Skip app builds and DMG releases for documentation-only changes. Keep landing-page deployment enabled.
 - [x] Support links, files, and colours, with corresponding history filters.
 - [x] Configure clipboard storage size in Settings.
 - [x] Remove the double selection highlight and maintain a valid selection when changing filters. The final selection colour is grey, superseding the earlier blue request.
