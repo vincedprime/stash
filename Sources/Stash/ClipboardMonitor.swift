@@ -21,11 +21,54 @@ final class ClipboardMonitor {
         guard pasteboard.changeCount != changeCount else { return }
         changeCount = pasteboard.changeCount
         guard !isPaused else { onSave?(.paused); return }
-        let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
-        let result: SaveResult
-        if let string = pasteboard.string(forType: .string) { result = store.saveText(string, sourceApp: sourceApp) }
-        else if let image = NSImage(pasteboard: pasteboard) { result = store.saveImage(image, sourceApp: sourceApp) }
-        else { return }
+        guard let result = capture(from: pasteboard, sourceApp: NSWorkspace.shared.frontmostApplication?.localizedName) else { return }
         onSave?(result)
+    }
+
+    func capture(from pasteboard: NSPasteboard, sourceApp: String?) -> SaveResult? {
+        // Ignore only our exact write. A later copy from any app has a new count.
+        guard !store.isRestoredPasteboard(pasteboard) else { return nil }
+        let result: SaveResult
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            result = store.saveFiles(urls, sourceApp: sourceApp)
+        } else if let color = NSColor(from: pasteboard) {
+            result = store.saveColor(color, sourceApp: sourceApp)
+        } else if let image = NSImage(pasteboard: pasteboard),
+                  let capture = imageCapture(for: image, pasteboard: pasteboard) {
+            result = store.saveImage(capture, sourceApp: sourceApp)
+        } else if let string = pasteboard.string(forType: .string) {
+            result = store.saveText(string, sourceApp: sourceApp)
+        } else if let link = pasteboard.string(forType: .URL) {
+            result = store.saveText(link, sourceApp: sourceApp)
+        }
+        else { return nil }
+        return result
+    }
+
+    private func imageCapture(for image: NSImage, pasteboard: NSPasteboard) -> ImageCapture? {
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else { return nil }
+        let types = Set(pasteboard.types?.map(\.rawValue) ?? [])
+        let imageFormat: String?
+        if types.contains("public.png") { imageFormat = "PNG" }
+        else if types.contains("public.jpeg") { imageFormat = "JPEG" }
+        else if types.contains("public.heic") { imageFormat = "HEIC" }
+        else if types.contains("public.gif") { imageFormat = "GIF" }
+        else if types.contains("public.tiff") { imageFormat = "TIFF" }
+        else { imageFormat = nil }
+        let thumbnailSide = 160.0
+        let scale = min(thumbnailSide / max(Double(bitmap.pixelsWide), 1), thumbnailSide / max(Double(bitmap.pixelsHigh), 1), 1)
+        let thumbnailSize = NSSize(width: CGFloat(Double(bitmap.pixelsWide) * scale), height: CGFloat(Double(bitmap.pixelsHigh) * scale))
+        let thumbnail = NSImage(size: thumbnailSize)
+        thumbnail.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .medium
+        image.draw(in: NSRect(origin: .zero, size: thumbnailSize), from: .zero, operation: .copy, fraction: 1)
+        thumbnail.unlockFocus()
+        guard let thumbnailTIFF = thumbnail.tiffRepresentation,
+              let thumbnailBitmap = NSBitmapImageRep(data: thumbnailTIFF),
+              let thumbnailData = thumbnailBitmap.representation(using: .png, properties: [:]) else { return nil }
+        let metadata = ImageMetadata(pixelWidth: bitmap.pixelsWide, pixelHeight: bitmap.pixelsHigh, imageFormat: imageFormat)
+        return ImageCapture(pngData: pngData, thumbnailData: thumbnailData, metadata: metadata)
     }
 }
