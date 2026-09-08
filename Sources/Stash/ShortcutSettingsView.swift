@@ -53,18 +53,39 @@ nonisolated enum ShortcutStorage {
 }
 
 struct ShortcutSettingsView: View {
+    let model: HistoryModel
+    @State private var storageLimit: Int
+    @State private var retentionMinutes: Int
     @State private var openShortcut: HotKeyBinding
     @State private var recordingShortcut: HotKeyBinding
     @State private var panelBindings: [PanelShortcut: HotKeyBinding]
     @State private var error = ""
     @State private var saved = false
     let onSave: (HotKeyBinding, HotKeyBinding, [PanelShortcut: HotKeyBinding]) -> Bool
-    init(open: HotKeyBinding, recording: HotKeyBinding, panel: [PanelShortcut: HotKeyBinding], onSave: @escaping (HotKeyBinding, HotKeyBinding, [PanelShortcut: HotKeyBinding]) -> Bool) {
+    init(model: HistoryModel, open: HotKeyBinding, recording: HotKeyBinding, panel: [PanelShortcut: HotKeyBinding], onSave: @escaping (HotKeyBinding, HotKeyBinding, [PanelShortcut: HotKeyBinding]) -> Bool) {
+        self.model = model
+        _storageLimit = State(initialValue: model.storageLimit)
+        _retentionMinutes = State(initialValue: model.retentionMinutes)
         _openShortcut = State(initialValue: open); _recordingShortcut = State(initialValue: recording); _panelBindings = State(initialValue: panel); self.onSave = onSave
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(spacing: 0) {
+         ScrollView {
+          VStack(alignment: .leading, spacing: 14) {
             Text("Settings").font(.title2.weight(.semibold))
+            Text("History").font(.headline)
+            Picker("Storage limit", selection: $storageLimit) {
+                ForEach([25, 50, 100, 250], id: \.self) { size in Text("\(size) MB").tag(size * 1024 * 1024) }
+            }
+            Picker("Auto-delete", selection: $retentionMinutes) {
+                Text("Never").tag(0)
+                Text("After 1 hour").tag(60)
+                Text("After 1 day").tag(1440)
+                Text("After 1 week").tag(10080)
+            }
+            Text("Checks at launch and every minute. Age starts from the most recent copy. Pinned items are kept. Saving a shorter duration or lower storage limit may remove unpinned history immediately.")
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
             Text("Click a shortcut, then press your preferred key combination.").font(.subheadline).foregroundStyle(.secondary)
             Divider()
             Text("Global shortcuts").font(.headline)
@@ -73,9 +94,18 @@ struct ShortcutSettingsView: View {
             Divider()
             Text("History shortcuts").font(.headline)
             ForEach(PanelShortcut.allCases) { action in row(action.title, binding: binding(for: action), requiresModifier: false) }
+          }.padding(22)
+         }
+         Divider()
+         VStack(alignment: .leading, spacing: 8) {
             if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
-            HStack { Button("Restore defaults") { openShortcut = .openDefault; recordingShortcut = .recordDefault; panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, $0.defaultBinding) }) }; Spacer(); Button(saved ? "Saved" : "Save changes") { save() }.keyboardShortcut(.defaultAction) }
-        }.padding(22).frame(width: 440)
+            HStack {
+                Button("Reset shortcuts") { openShortcut = .openDefault; recordingShortcut = .recordDefault; panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, $0.defaultBinding) }) }
+                Spacer()
+                Button(saved ? "Saved" : "Save changes") { save() }.keyboardShortcut(.defaultAction)
+            }
+         }.padding(16)
+        }.frame(width: 460, height: 620)
     }
     private func row(_ title: String, binding: Binding<HotKeyBinding>, requiresModifier: Bool) -> some View { HStack { Text(title).font(.body.weight(.medium)); Spacer(); HotKeyRecorder(binding: binding, requiresModifier: requiresModifier).frame(width: 150, height: 30) } }
     private func binding(for action: PanelShortcut) -> Binding<HotKeyBinding> { Binding(get: { panelBindings[action] ?? action.defaultBinding }, set: { panelBindings[action] = $0 }) }
@@ -83,6 +113,8 @@ struct ShortcutSettingsView: View {
         let all = [openShortcut, recordingShortcut] + PanelShortcut.allCases.map { panelBindings[$0] ?? $0.defaultBinding }
         guard Set(all.map { "\($0.keyCode):\($0.modifiers)" }).count == all.count else { error = "Each action needs a different shortcut."; return }
         guard onSave(openShortcut, recordingShortcut, panelBindings) else { error = "macOS could not register one of the global shortcuts."; return }
+        if storageLimit != model.storageLimit { model.setStorageLimit(storageLimit) }
+        if retentionMinutes != model.retentionMinutes { model.setRetentionMinutes(retentionMinutes) }
         error = ""; saved = true; DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
     }
 }

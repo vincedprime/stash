@@ -21,20 +21,26 @@ final class ClipboardMonitor {
         guard pasteboard.changeCount != changeCount else { return }
         changeCount = pasteboard.changeCount
         guard !isPaused else { onSave?(.paused); return }
-        let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
+        guard let result = capture(from: pasteboard, sourceApp: NSWorkspace.shared.frontmostApplication?.localizedName) else { return }
+        onSave?(result)
+    }
+
+    func capture(from pasteboard: NSPasteboard, sourceApp: String?) -> SaveResult? {
         let result: SaveResult
-        if let image = NSImage(pasteboard: pasteboard),
-                  let capture = imageCapture(for: image, pasteboard: pasteboard) {
-            result = store.saveImage(capture, sourceApp: sourceApp)
-        } else if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             result = store.saveFiles(urls, sourceApp: sourceApp)
         } else if let color = NSColor(from: pasteboard) {
             result = store.saveColor(color, sourceApp: sourceApp)
+        } else if let image = NSImage(pasteboard: pasteboard),
+                  let capture = imageCapture(for: image, pasteboard: pasteboard) {
+            result = store.saveImage(capture, sourceApp: sourceApp)
         } else if let string = pasteboard.string(forType: .string) {
             result = store.saveText(string, sourceApp: sourceApp)
+        } else if let link = pasteboard.string(forType: .URL) {
+            result = store.saveText(link, sourceApp: sourceApp)
         }
-        else { return }
-        onSave?(result)
+        else { return nil }
+        return result
     }
 
     private func imageCapture(for image: NSImage, pasteboard: NSPasteboard) -> ImageCapture? {

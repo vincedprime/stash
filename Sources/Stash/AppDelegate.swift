@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let store = try ClipboardStore()
             let model = HistoryModel(store: store)
             model.onRestore = { [weak self] _ in self?.hidePanel() }
+            model.onShowSettings = { [weak self] in self?.showSettings() }
             self.model = model
             let monitor = ClipboardMonitor(store: store)
             model.onPauseChanged = { [weak monitor] paused in
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.monitor = monitor
             monitor.start()
             makeStatusItem()
+            makeApplicationMenu()
             let shortcut = ShortcutManager()
             shortcut.onActivate = { [weak self] in self?.togglePanel() }
             shortcut.onToggleRecording = { [weak self] in self?.toggleRecording() }
@@ -62,7 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         settings.target = self
 
         let used = model.map { ByteCountFormatter.string(fromByteCount: Int64($0.usage), countStyle: .file) } ?? "0 bytes"
-        let memory = menu.addItem(withTitle: "Memory  \(used) / 50 MB", action: nil, keyEquivalent: "")
+        let limit = ByteCountFormatter.string(fromByteCount: Int64(model?.storageLimit ?? ClipboardStore.defaultMaximumBytes), countStyle: .binary)
+        let memory = menu.addItem(withTitle: "Storage  \(used) / \(limit)", action: nil, keyEquivalent: "")
         memory.isEnabled = false
 
         let recording = menu.addItem(withTitle: model?.paused == true ? "Resume recording" : "Pause recording", action: #selector(toggleRecording), keyEquivalent: "")
@@ -76,8 +79,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func menuWillOpen(_ menu: NSMenu) { hidePanel(); settingsPanel?.orderOut(nil) }
 
     @objc private func showSettings() {
+        guard let model else { return }
+        hidePanel()
         let panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
-        let view = ShortcutSettingsView(open: openBinding, recording: recordingBinding, panel: panelBindings) { [weak self] open, record, panel in
+        let view = ShortcutSettingsView(model: model, open: openBinding, recording: recordingBinding, panel: panelBindings) { [weak self] open, record, panel in
             guard let self, self.shortcut?.register(open: open, record: record) == true else { return false }
             self.save(open, forKey: "openShortcut")
             self.save(record, forKey: "recordShortcut")
@@ -85,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return true
         }
         if settingsPanel == nil {
-            let panel = TransientPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 250), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = TransientPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 620), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash Settings"
             panel.isFloatingPanel = true
             panel.hidesOnDeactivate = true
@@ -101,6 +106,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private var openBinding: HotKeyBinding { binding(forKey: "openShortcut", fallback: .openDefault) }
+    func makeApplicationMenu() {
+        let mainMenu = NSMenu()
+        let app = NSMenuItem()
+        let appMenu = NSMenu(title: "Stash")
+        let settings = appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settings.target = self
+        appMenu.addItem(withTitle: "Quit Stash", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        app.submenu = appMenu
+        mainMenu.addItem(app)
+        // AppKit routes these through the responder chain to search, tags, or the editor.
+        let edit = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: NSSelectorFromString("redo:"), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.submenu = editMenu
+        mainMenu.addItem(edit)
+        NSApp.mainMenu = mainMenu
+    }
     private var recordingBinding: HotKeyBinding { binding(forKey: "recordShortcut", fallback: .recordDefault) }
     private func binding(forKey key: String, fallback: HotKeyBinding) -> HotKeyBinding {
         guard let data = UserDefaults.standard.data(forKey: key), let binding = try? JSONDecoder().decode(HotKeyBinding.self, from: data) else { return fallback }
@@ -113,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func togglePanel() { panel?.isVisible == true ? hidePanel() : showPanelWindow() }
     private func showPanelWindow() {
         guard let model else { return }
+        model.applyRetention()
         model.query = ""
         model.selectedID = nil
         model.reload()
@@ -127,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.onResignKey = { [weak self] in self?.hidePanel() }
             panel.contentView = NSHostingView(rootView: HistoryView(model: model))
             self.panel = panel
+            model.historyWindow = panel
         }
         NSApplication.shared.activate(ignoringOtherApps: true)
         panel?.center(); panel?.makeKeyAndOrderFront(nil)

@@ -10,11 +10,13 @@ final class ClipboardStore {
     private var database: OpaquePointer?
     private let root: URL
     private let images: URL
+    private let defaults: UserDefaults
     private var cachedByteUsage = 0
     private(set) var maximumBytes: Int
 
-    init(root: URL? = nil) throws {
-        let savedLimit = UserDefaults.standard.integer(forKey: "storageLimitBytes")
+    init(root: URL? = nil, defaults: UserDefaults = .standard) throws {
+        self.defaults = defaults
+        let savedLimit = defaults.integer(forKey: "storageLimitBytes")
         self.maximumBytes = savedLimit > 0 ? savedLimit : Self.defaultMaximumBytes
         self.root = try root ?? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("Stash", isDirectory: true)
@@ -38,6 +40,7 @@ final class ClipboardStore {
         try? execute("ALTER TABLE entries ADD COLUMN image_format TEXT")
         try? execute("ALTER TABLE entries ADD COLUMN thumbnail_path TEXT")
         try? execute("ALTER TABLE entries ADD COLUMN tags TEXT")
+        try classifyLegacyText()
         cachedByteUsage = scalarInt("SELECT COALESCE(SUM(byte_count), 0) FROM entries")
     }
 
@@ -67,17 +70,18 @@ final class ClipboardStore {
 
     func setMaximumBytes(_ value: Int) {
         maximumBytes = value
-        UserDefaults.standard.set(value, forKey: "storageLimitBytes")
+        defaults.set(value, forKey: "storageLimitBytes")
         makeRoom(for: 0)
     }
 
     func saveText(_ text: String, sourceApp: String?) -> SaveResult {
         guard !text.isEmpty else { return .duplicate }
-        if let last = newestEntry(), last.kind == .text, last.text == text {
+        let kind = TextContent.kind(for: text)
+        if let last = newestEntry(), last.kind == kind, last.text == text {
             refreshDuplicate(last, sourceApp: sourceApp, imageMetadata: nil)
             return .saved
         }
-        return insert(kind: .text, text: text, imageData: nil, sourceApp: sourceApp, imageMetadata: nil)
+        return insert(kind: kind, text: text, imageData: nil, sourceApp: sourceApp, imageMetadata: nil)
     }
 
     func saveImage(_ capture: ImageCapture, sourceApp: String?) -> SaveResult {
@@ -100,25 +104,53 @@ final class ClipboardStore {
         return insert(kind: .color, text: hex, imageData: nil, sourceApp: sourceApp, imageMetadata: nil)
     }
 
-    func setTags(_ tags: String, for entry: ClipboardEntry) {
-        executeQuietly("UPDATE entries SET tags = ? WHERE id = ?", bindings: [.optionalText(tags.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : tags), .text(entry.id.uuidString)])
+    func setTags(_ tags: String, for entry: ClipboardEntry) -> Bool {
+        var seen = Set<String>()
+        let normalized = tags.prefix(512).split(separator: ",").compactMap { part -> String? in
+            let tag = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !tag.isEmpty && seen.insert(tag.lowercased()).inserted ? tag : nil
+        }.joined(separator: ", ")
+        return executeQuietly("UPDATE entries SET tags = ? WHERE id = ?", bindings: [.optionalText(normalized.isEmpty ? nil : normalized), .text(entry.id.uuidString)])
     }
 
     func updateText(_ text: String, for entry: ClipboardEntry) -> Bool {
-        guard entry.kind == .text, !text.isEmpty else { return false }
+        guard entry.kind.isEditable, !text.isEmpty else { return false }
         let newBytes = text.utf8.count
         guard cachedByteUsage - entry.byteCount + newBytes <= maximumBytes else { return false }
-        executeQuietly("UPDATE entries SET text = ?, byte_count = ? WHERE id = ?", bindings: [.text(text), .int(newBytes), .text(entry.id.uuidString)])
+        guard executeQuietly("UPDATE entries SET text = ?, byte_count = ?, kind = ? WHERE id = ?", bindings: [.text(text), .int(newBytes), .text(TextContent.kind(for: text).rawValue), .text(entry.id.uuidString)]) else { return false }
         cachedByteUsage += newBytes - entry.byteCount
         return true
     }
 
     func deleteEntries(since date: Date) {
-        entries().filter { $0.createdAt >= date && !$0.isPinned }.forEach(delete)
+        _ = deleteEntries(matching: "created_at >= ?", date: date)
     }
 
-    func deleteEntries(before date: Date) {
-        entries().filter { $0.createdAt < date && !$0.isPinned }.forEach(delete)
+    @discardableResult
+    func deleteEntries(before date: Date) -> Bool {
+        deleteEntries(matching: "created_at < ?", date: date)
+    }
+
+    // Read only payload paths and sizes for expiry, never materialize history text.
+    private func deleteEntries(matching predicate: String, date: Date) -> Bool {
+        var query: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "SELECT image_path,thumbnail_path,byte_count FROM entries WHERE pinned = 0 AND \(predicate)", -1, &query, nil) == SQLITE_OK else { return false }
+        sqlite3_bind_double(query, 1, date.timeIntervalSince1970)
+        var paths: [String] = []
+        var bytes = 0
+        var count = 0
+        while sqlite3_step(query) == SQLITE_ROW {
+            for index: Int32 in [0, 1] {
+                if let path = sqlite3_column_text(query, index) { paths.append(String(cString: path)) }
+            }
+            bytes += Int(sqlite3_column_int64(query, 2))
+            count += 1
+        }
+        sqlite3_finalize(query)
+        guard count > 0, executeQuietly("DELETE FROM entries WHERE pinned = 0 AND \(predicate)", bindings: [.double(date.timeIntervalSince1970)]) else { return false }
+        cachedByteUsage -= bytes
+        for path in paths { try? FileManager.default.removeItem(at: root.appendingPathComponent(path)) }
+        return true
     }
 
     func setPinned(_ entry: ClipboardEntry, pinned: Bool) {
@@ -152,6 +184,9 @@ final class ClipboardStore {
         pasteboard.clearContents()
         switch entry.kind {
         case .text, .color: pasteboard.setString(entry.text ?? "", forType: .string)
+        case .link:
+            pasteboard.setString(entry.text ?? "", forType: .string)
+            pasteboard.setString((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines), forType: .URL)
         case .file:
             let urls = (entry.text ?? "").split(separator: "\n").map { URL(fileURLWithPath: String($0)) }
             pasteboard.writeObjects(urls as [NSURL])
@@ -215,15 +250,39 @@ final class ClipboardStore {
     }
 
     private var statement: OpaquePointer?
+    private func classifyLegacyText() throws {
+        guard scalarInt("PRAGMA user_version") == 0 else { return }
+        var query: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "SELECT id,text FROM entries WHERE kind = 'text' AND byte_count <= 4096", -1, &query, nil) == SQLITE_OK else { throw StoreError.sql }
+        var changes: [(String, EntryKind)] = []
+        while sqlite3_step(query) == SQLITE_ROW {
+            guard let id = sqlite3_column_text(query, 0), let text = sqlite3_column_text(query, 1) else { continue }
+            let kind = TextContent.kind(for: String(cString: text))
+            if kind != .text { changes.append((String(cString: id), kind)) }
+        }
+        sqlite3_finalize(query)
+        try execute("BEGIN TRANSACTION")
+        do {
+            for (id, kind) in changes {
+                guard executeQuietly("UPDATE entries SET kind = ? WHERE id = ?", bindings: [.text(kind.rawValue), .text(id)]) else { throw StoreError.sql }
+            }
+            try execute("PRAGMA user_version = 1")
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
     private enum Binding { case text(String), optionalText(String?), int(Int), optionalInt(Int?), double(Double) }
     private func execute(_ sql: String) throws {
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { throw StoreError.sql }
     }
-    private func executeQuietly(_ sql: String, bindings: [Binding]) {
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return }
+    @discardableResult
+    private func executeQuietly(_ sql: String, bindings: [Binding]) -> Bool {
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return false }
         defer { sqlite3_finalize(statement); statement = nil }
         for (index, binding) in bindings.enumerated() { bind(binding, at: Int32(index + 1)) }
-        _ = sqlite3_step(statement)
+        return sqlite3_step(statement) == SQLITE_DONE
     }
     private func bind(_ value: Binding, at index: Int32) {
         switch value {

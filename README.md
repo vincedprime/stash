@@ -67,19 +67,24 @@ This copies Stash to Applications, clears macOS’s download quarantine for this
 ## Use Stash
 
 - Click the menu-bar icon or press `Option-Space` to open history.
-- Type in the search field to filter copied text.
+- Type in the search field to find copied content or saved tags. Use **Links** or **Colors** to narrow the history.
 - Select an item to put it back on the clipboard, then paste into your app with `Command-V`.
 - Pin an item to protect it from automatic cleanup.
 - Use the pause control in the menu-bar menu when you do not want Stash to record copies.
-- Choose **Shortcut: Option-Space** from the menu to switch to `Option-Shift-Space`. Stash remembers the choice.
+- Open **Settings…** from the menu-bar menu, the gear button, or `Command-,` while Stash is focused. Storage, auto-delete, and keyboard bindings are configured there; click **Save changes** to apply them.
+- To edit text, links, or hex colours, select an entry and click **Edit** below its preview. Use **Save** or **Cancel**; Enter and arrow keys operate inside the editor while editing. Standard macOS copy, paste, selection, undo, and redo work through the Edit menu.
+- Click **Add tags**, type comma-separated names such as `work, design`, then click **Save tags** (or press Return). **Edit tags** changes or removes them. The Tags metadata row is hidden when empty.
 - Delete individual items or choose **Clear All** in the history panel to immediately remove retained history.
 
 ## Storage and limits
 
 - Stash saves its database and image files at `~/Library/Application Support/Stash`.
-- Text and PNG-normalized images are supported.
-- History is retained until manually deleted, subject to a 50 MB total cap.
+- Text, HTTP/HTTPS links, PNG-normalized images, local file references, native colours, and hex colour literals are supported. File contents are not backed up; the original files must still exist when pasted.
+- Hex detection accepts `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, and six hexadecimal digits such as `F7ADAD`. It checks only a whole literal; a sentence containing a colour stays text. Link classification checks whole URLs up to 4 KB. No language detection or full-document analysis runs.
+- The default cap is 50 MB. Settings offers 25, 50, 100, or 250 MB.
 - When space runs low, Stash removes the oldest unpinned entries first. If pinned entries fill the cap, recording pauses until space is freed.
+- Auto-delete defaults to **Never**. Options are one hour, one day, or one week since the entry's most recent copy. Cleanup runs at launch, when history opens, and roughly once a minute while Stash runs, including when recording is paused. Sleep/quit delays cleanup until Stash resumes. Pinned items are excluded.
+- Saving a shorter retention duration or lower storage limit can remove eligible unpinned entries immediately. **Clear All** also removes pinned entries; **Delete recent** preserves them.
 
 ## Uninstall
 
@@ -107,4 +112,8 @@ Build the project without installing the app:
 swift build
 ```
 
-The installed Command Line Tools on some managed Macs do not include the XCTest or Swift Testing modules. In that case, `swift build` is the available local validation command.
+Some managed Macs do not include XCTest or Swift Testing. An SDK-only regression runner checks classification, private-pasteboard capture, persisted edits/tags, retention, and migration against temporary data:
+
+```sh
+zsh scripts/check-regressions.sh
+```

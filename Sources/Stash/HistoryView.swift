@@ -14,20 +14,32 @@ final class HistoryModel: ObservableObject {
     @Published var isPresented = false
     @Published var storageLimit: Int
     @Published var retentionMinutes: Int
+    @Published var isEditingInspector = false
+    weak var historyWindow: NSWindow?
+    var onShowSettings: (() -> Void)?
     let store: ClipboardStore
     var onRestore: ((ClipboardEntry) -> Void)?
     var onPauseChanged: ((Bool) -> Void)?
     private var searchTask: Task<Void, Never>?
+    private var retentionTimer: Timer?
+    private let defaults: UserDefaults
     private let thumbnailCache = NSCache<NSString, NSImage>()
     private let imageCache = NSCache<NSString, NSImage>()
 
-    init(store: ClipboardStore) {
+    init(store: ClipboardStore, defaults: UserDefaults = .standard) {
         self.store = store
+        self.defaults = defaults
         usage = store.byteUsage()
         storageLimit = store.maximumBytes
-        retentionMinutes = UserDefaults.standard.integer(forKey: "retentionMinutes")
+        retentionMinutes = defaults.integer(forKey: "retentionMinutes")
         thumbnailCache.countLimit = 160
         imageCache.countLimit = 3
+        applyRetention()
+        retentionTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            // The timer is installed on the main run loop by this MainActor initializer.
+            MainActor.assumeIsolated { self?.applyRetention() }
+        }
+        retentionTimer?.tolerance = 5
     }
     var selectedEntry: ClipboardEntry? { entries.first { $0.id == selectedID } }
 
@@ -39,9 +51,15 @@ final class HistoryModel: ObservableObject {
     }
 
     func noteHistoryChanged() {
-        if retentionMinutes > 0 { store.deleteEntries(before: Date().addingTimeInterval(-Double(retentionMinutes * 60))) }
         usage = store.byteUsage()
         if isPresented { reload() }
+    }
+
+    func applyRetention(now: Date = Date()) {
+        guard retentionMinutes > 0 else { return }
+        if store.deleteEntries(before: now.addingTimeInterval(-Double(retentionMinutes) * 60)) {
+            noteHistoryChanged()
+        }
     }
 
     func thumbnail(for entry: ClipboardEntry) -> NSImage? {
@@ -101,9 +119,17 @@ final class HistoryModel: ObservableObject {
     }
     func clear() { store.clear(); reload() }
     func setStorageLimit(_ bytes: Int) { store.setMaximumBytes(bytes); storageLimit = bytes; reload() }
-    func setRetentionMinutes(_ minutes: Int) { retentionMinutes = minutes; UserDefaults.standard.set(minutes, forKey: "retentionMinutes"); if minutes > 0 { store.deleteEntries(before: Date().addingTimeInterval(-Double(minutes * 60))); reload() } }
+    func setRetentionMinutes(_ minutes: Int) {
+        retentionMinutes = max(0, minutes)
+        defaults.set(retentionMinutes, forKey: "retentionMinutes")
+        applyRetention()
+    }
     func deleteRecent(_ minutes: Int) { store.deleteEntries(since: Date().addingTimeInterval(-Double(minutes * 60))); reload() }
-    func setTags(_ tags: String, for entry: ClipboardEntry) { store.setTags(tags, for: entry); reload() }
+    func setTags(_ tags: String, for entry: ClipboardEntry) -> Bool {
+        let saved = store.setTags(tags, for: entry)
+        if saved { reload() }
+        return saved
+    }
     func updateText(_ text: String, for entry: ClipboardEntry) -> Bool { let saved = store.updateText(text, for: entry); if saved { reload() }; return saved }
 }
 
@@ -147,13 +173,14 @@ struct HistoryView: View {
 
             HStack(spacing: 0) {
                 ScrollViewReader { proxy in
-                    List(selection: $model.selectedID) {
+                    ScrollView {
+                      LazyVStack(spacing: 0) {
                         ForEach(model.entries) { entry in
                             HStack(spacing: 10) {
                                 if entry.kind == .image, let image = model.thumbnail(for: entry) {
                                     Image(nsImage: image).resizable().scaledToFit().frame(width: 28, height: 28)
                                 }
-                                Text(entry.kind == .text ? (entry.preview.isEmpty ? "Empty text" : entry.preview) : "Image")
+                                Text(entry.preview.isEmpty ? "Empty text" : entry.preview)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                 Spacer()
@@ -163,16 +190,18 @@ struct HistoryView: View {
                                         .accessibilityLabel("Pinned")
                                 }
                             }
-                            .tag(entry.id)
                             .id(entry.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture { model.selectedID = entry.id }
-                            .onTapGesture(count: 2) { model.restore(entry) }
                             .frame(height: 38)
-                            .listRowBackground(model.selectedID == entry.id ? Color.accentColor.opacity(0.82) : Color.clear)
+                            .padding(.horizontal, 10)
+                            .background(model.selectedID == entry.id ? Color.gray.opacity(0.4) : Color.clear)
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2) { model.restore(entry) }
+                            .onTapGesture { model.selectedID = entry.id }
+                            .accessibilityAddTraits(model.selectedID == entry.id ? [.isSelected] : [])
+                            Divider()
                         }
+                      }
                     }
-                    .listStyle(.plain)
                     .frame(width: 420)
                     .onChange(of: model.selectedID) { _, selectedID in
                         if let selectedID { proxy.scrollTo(selectedID, anchor: .center) }
@@ -181,6 +210,7 @@ struct HistoryView: View {
 
                 Divider()
                 EntryViewer(entry: model.selectedEntry, model: model)
+                    .id(model.selectedID)
                     .frame(width: 320)
             }
 
@@ -204,15 +234,18 @@ struct HistoryView: View {
         .frame(width: 740, height: 540)
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
+        .onChange(of: model.isEditingInspector) { _, editing in if editing { searchIsFocused = false } }
     }
 
-    private func handleKeyEvent(_ event: NSEvent) -> Bool {
+    func handleKeyEvent(_ event: NSEvent) -> Bool {
+        guard model.isPresented, event.window === model.historyWindow else { return false }
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        if modifiers == .command {
-            let selector: Selector? = switch event.keyCode {
-            case UInt16(kVK_ANSI_A): #selector(NSResponder.selectAll(_:)); case UInt16(kVK_ANSI_C): Selector(("copy:")); case UInt16(kVK_ANSI_X): Selector(("cut:")); case UInt16(kVK_ANSI_V): Selector(("paste:")); case UInt16(kVK_ANSI_Z): event.modifierFlags.contains(.shift) ? Selector(("redo:")) : Selector(("undo:")); default: nil
-            }
-            if let selector { return NSApp.sendAction(selector, to: nil, from: nil) }
+        // Let the Edit menu and native text responder handle command shortcuts.
+        let standardKeys: Set<UInt16> = [UInt16(kVK_ANSI_A), UInt16(kVK_ANSI_C), UInt16(kVK_ANSI_X), UInt16(kVK_ANSI_V), UInt16(kVK_ANSI_Z), UInt16(kVK_ANSI_Q), UInt16(kVK_ANSI_Comma)]
+        if modifiers.contains(.command), standardKeys.contains(event.keyCode) { return false }
+        if model.isEditingInspector { return false }
+        if let editor = event.window?.firstResponder as? NSTextView, !editor.isFieldEditor {
+            return false
         }
         for action in PanelShortcut.allCases where matches(event, action) {
             switch action { case .delete: model.deleteSelection(); case .pin: model.togglePinSelection(); case .filter: model.cycleFilter(); case .up: model.moveSelection(by: -1); case .down: model.moveSelection(by: 1); case .copy: model.restoreSelection() }
@@ -239,28 +272,23 @@ struct HistoryView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 260)
+            .frame(width: 320)
         }
         .padding(12)
     }
 
     private var statusBar: some View {
         HStack {
-            Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: Int64(model.storageLimit), countStyle: .file))")
+            Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .binary)) / \(ByteCountFormatter.string(fromByteCount: Int64(model.storageLimit), countStyle: .binary))")
             Button("Clear All") { model.clear() }
             Menu("Delete recent") {
                 Button("Last 5 minutes") { model.deleteRecent(5) }
                 Button("Last hour") { model.deleteRecent(60) }
                 Button("Last day") { model.deleteRecent(24 * 60) }
             }
-            Menu("Storage") { ForEach([25, 50, 100, 250], id: \.self) { size in Button("\(size) MB") { model.setStorageLimit(size * 1024 * 1024) } } }
-            Menu("Auto-delete") {
-                Button("Never") { model.setRetentionMinutes(0) }
-                Button("After 1 hour") { model.setRetentionMinutes(60) }
-                Button("After 1 day") { model.setRetentionMinutes(24 * 60) }
-                Button("After 1 week") { model.setRetentionMinutes(7 * 24 * 60) }
-            }
             Spacer()
+            Button { model.onShowSettings?() } label: { Image(systemName: "gearshape") }
+                .help("Settings (⌘,)")
             Toggle(model.paused ? "Recording paused" : "Recording", isOn: Binding(get: { model.paused }, set: { model.setPaused($0) }))
                 .toggleStyle(.switch).controlSize(.small)
         }
@@ -271,27 +299,45 @@ struct HistoryView: View {
 private struct EntryViewer: View {
     let entry: ClipboardEntry?
     let model: HistoryModel
+    @State private var editing = false
+    @State private var tagging = false
 
     var body: some View {
         Group {
             if let entry {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(entry.kind.title).font(.headline)
-                        Spacer()
-                        Button("Copy") { model.copySelection() }
-                    }
                     if entry.kind == .image, let image = model.image(for: entry) {
                         Image(nsImage: image)
                             .resizable()
                             .scaledToFit()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if entry.kind == .text {
-                        TextEntryEditor(entry: entry, model: model)
+                    } else if editing {
+                        TextEntryEditor(entry: entry, model: model) { editing = false }
                             .id(entry.id)
                     } else {
-                        ScrollView { Text(entry.text ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if entry.kind == .color, let rgba = TextContent.rgba((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha))
+                                        .frame(height: 100)
+                                        .accessibilityLabel("Colour preview")
+                                }
+                                Text(entry.text ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                             .frame(maxHeight: .infinity)
+                    }
+                    if !editing && !tagging {
+                        HStack {
+                            if entry.kind.isEditable { Button("Edit") { editing = true } }
+                            Spacer()
+                            Button((entry.tags ?? "").isEmpty ? "Add tags" : "Edit tags") { tagging = true }
+                        }
+                        .controlSize(.small)
+                    }
+                    if tagging {
+                        EntryTagsEditor(entry: entry, model: model) { tagging = false }
                     }
                     Divider()
                     metadata(for: entry)
@@ -301,6 +347,8 @@ private struct EntryViewer: View {
             }
         }
         .padding(12)
+        .onChange(of: editing || tagging) { _, active in model.isEditingInspector = active }
+        .onDisappear { model.isEditingInspector = false }
     }
 
     private func sizeDescription(for entry: ClipboardEntry) -> String {
@@ -315,11 +363,7 @@ private struct EntryViewer: View {
             metadataRow("Size", sizeDescription(for: entry))
             metadataRow("Copies", entry.copyCount == 1 ? "Once" : "\(entry.copyCount) times")
             metadataRow("Type", entry.kind.title)
-            TextField("Tags (comma separated)", text: Binding(
-                get: { entry.tags ?? "" },
-                set: { model.setTags($0, for: entry) }
-            ))
-            .textFieldStyle(.roundedBorder)
+            if let tags = entry.tags, !tags.isEmpty { metadataRow("Tags", tags) }
 
             if entry.kind == .image {
                 if let width = entry.pixelWidth, let height = entry.pixelHeight, width > 0, height > 0 {
@@ -361,19 +405,65 @@ private struct TextEntryEditor: View {
     let entry: ClipboardEntry
     let model: HistoryModel
     @State private var text: String
-    @State private var saved = false
+    let onFinish: () -> Void
+    @State private var error = ""
+    @FocusState private var focused: Bool
 
-    init(entry: ClipboardEntry, model: HistoryModel) {
+    init(entry: ClipboardEntry, model: HistoryModel, onFinish: @escaping () -> Void) {
         self.entry = entry
         self.model = model
+        self.onFinish = onFinish
         _text = State(initialValue: entry.text ?? "")
     }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            TextEditor(text: $text).font(.body.monospaced()).frame(maxHeight: .infinity)
-            Button(saved ? "Saved" : "Save edit") { saved = model.updateText(text, for: entry) }
+            TextEditor(text: $text).font(.body).focused($focused).frame(maxHeight: .infinity)
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
+            HStack {
+                Button("Cancel", action: onFinish)
+                Spacer()
+                Button("Save") {
+                    if model.updateText(text, for: entry) { onFinish() }
+                    else { error = "Could not save. Check the storage limit in Settings." }
+                }
                 .disabled(text == entry.text || text.isEmpty)
+            }
         }
+        .onAppear { focused = true }
+        .onExitCommand(perform: onFinish)
+    }
+}
+
+private struct EntryTagsEditor: View {
+    let entry: ClipboardEntry
+    let model: HistoryModel
+    let onFinish: () -> Void
+    @State private var tags: String
+    @State private var error = ""
+    @FocusState private var focused: Bool
+
+    init(entry: ClipboardEntry, model: HistoryModel, onFinish: @escaping () -> Void) {
+        self.entry = entry
+        self.model = model
+        self.onFinish = onFinish
+        _tags = State(initialValue: entry.tags ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("work, design, ideas", text: $tags)
+                .textFieldStyle(.roundedBorder).focused($focused).onSubmit(save)
+            Text("Separate tags with commas. Search by any tag.").font(.caption).foregroundStyle(.secondary)
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
+            HStack { Button("Cancel", action: onFinish); Spacer(); Button("Save tags", action: save) }
+        }
+        .onAppear { focused = true }
+        .onExitCommand(perform: onFinish)
+    }
+
+    private func save() {
+        if model.setTags(tags, for: entry) { onFinish() }
+        else { error = "Could not save tags. Try again." }
     }
 }
