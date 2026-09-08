@@ -70,6 +70,6 @@ The runner uses temporary data and a private pasteboard; XCTest and Swift Testin
 
 History loads in batches of 100 with 360-character list excerpts. Text previews are capped at 16,000 characters; editing and restoration load the full entry. Image previews are downsampled, with an 8 MiB / 128-image cache. Closing history releases loaded views and data. These are working-set controls, not a cap on total app memory.
 
-The landing page is plain HTML, CSS, and JavaScript in [`docs/`](docs/index.html). See the [image capture notes](docs/assets/README.md) before updating its images. The release workflow skips pushes to `main` that change only `docs/`, Markdown files, or the site-image rendering scripts. App, packaging, and release-workflow changes still build and publish a DMG, including when mixed with documentation changes. GitHub Pages deployment remains independent and enabled.
+The landing page is plain HTML, CSS, and JavaScript in [`docs/`](docs/index.html). See the [image capture notes](docs/assets/README.md) before updating its images. The release workflow skips only Markdown-only pushes to `main`. Landing-page HTML, CSS, JavaScript, images, and rendering scripts trigger a build and DMG release, as do app and packaging changes. GitHub Pages deployment remains independent and enabled.
 
 [Outstanding work](docs/todo.md)
