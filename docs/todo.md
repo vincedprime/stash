@@ -1,0 +1,13 @@
+- [ ] Add support for links, files & colors - some thinking on Context switch
+- [ ] Add configuration to change clipboard storage size
+- [ ] 1 bug fix - selection of items are both grey and blue - stick to blue. Tab switch issue
+- [ ] Option to delete all entries
+- [ ] Option to delete entries of last n mins
+- [ ] Auto delete after some time
+- [ ] Add content type in metadata
+- [ ] Edit content
+- [ ] Export and import data
+- [ ] ability to add tags. so search can happen by tags as well
+- [ ] Allow copy from stash viewer
+- [ ] Understand why common text-editing keyboard shortcuts is not happenign and has to code it explicity. Like Undo, redo, copy, copy, paste, etc, in seach
+- [ ] Remove ci/cd in docs update

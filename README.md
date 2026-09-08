@@ -87,8 +87,8 @@ Quit Stash, disable its optional launch agent, and remove both the downloaded an
 
 ```sh
 pkill -x Stash 2>/dev/null || true
-launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinay.stash.plist" 2>/dev/null || true
-rm -f "$HOME/Library/LaunchAgents/com.vinay.stash.plist"
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist"
 rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"
 ```
 
@@ -96,7 +96,7 @@ Clipboard history is kept so it can be restored after reinstalling. To permanent
 
 ```sh
 rm -rf "$HOME/Library/Application Support/Stash"
-defaults delete com.vinay.stash 2>/dev/null || true
+defaults delete com.vinylstack.stash 2>/dev/null || true
 ```
 
 ## Development
