@@ -17,6 +17,7 @@ final class HistoryModel: ObservableObject {
     @Published var storageLimit: Int
     @Published var retentionMinutes: Int
     @Published var isEditingInspector = false
+    @Published var isConfirmingClear = false
     weak var historyWindow: NSWindow?
     var onShowSettings: (() -> Void)?
     let store: ClipboardStore
@@ -77,6 +78,7 @@ final class HistoryModel: ObservableObject {
 
     func dismiss() {
         isPresented = false
+        isConfirmingClear = false
         searchTask?.cancel()
         searchTask = nil
         isEditingInspector = false
@@ -193,6 +195,13 @@ struct HistoryView: View {
     var body: some View {
         content
             .background(KeyEventMonitor(handler: handleKeyEvent))
+            .alert("Delete all clipboard history?", isPresented: $model.isConfirmingClear) {
+                Button("Cancel", role: .cancel) {}
+                    .keyboardShortcut(.defaultAction)
+                Button("Delete All", role: .destructive) { model.clear() }
+            } message: {
+                Text("This permanently deletes all saved entries, including pinned items. This cannot be undone.")
+            }
     }
 
     private var content: some View {
@@ -270,6 +279,7 @@ struct HistoryView: View {
 
     func handleKeyEvent(_ event: NSEvent) -> Bool {
         guard model.isPresented, event.window === model.historyWindow else { return false }
+        guard !model.isConfirmingClear else { return false }
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         // Let the Edit menu and native text responder handle command shortcuts.
         let standardKeys: Set<UInt16> = [UInt16(kVK_ANSI_A), UInt16(kVK_ANSI_C), UInt16(kVK_ANSI_X), UInt16(kVK_ANSI_V), UInt16(kVK_ANSI_Z), UInt16(kVK_ANSI_Q), UInt16(kVK_ANSI_Comma)]
@@ -311,7 +321,8 @@ struct HistoryView: View {
     private var statusBar: some View {
         HStack {
             Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .binary)) / \(ByteCountFormatter.string(fromByteCount: Int64(model.storageLimit), countStyle: .binary))")
-            Button("Clear All") { model.clear() }
+            Button("Clear All") { model.isConfirmingClear = true }
+                .disabled(model.usage == 0)
             Menu("Delete recent") {
                 Button("Last 5 minutes") { model.deleteRecent(5) }
                 Button("Last hour") { model.deleteRecent(60) }

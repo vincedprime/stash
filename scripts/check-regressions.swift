@@ -112,6 +112,13 @@ struct RegressionChecks {
         precondition(!history.handleKeyEvent(key(kVK_ANSI_Z, flags: [.command, .shift])))
         precondition(history.handleKeyEvent(key(kVK_DownArrow)))
         precondition(model.selectedID != selected)
+        let beforeConfirmation = store.entries()
+        model.isConfirmingClear = true
+        precondition(!history.handleKeyEvent(key(kVK_Return)))
+        precondition(!history.handleKeyEvent(key(kVK_ANSI_X, flags: [.option])))
+        precondition(!history.handleKeyEvent(key(kVK_ANSI_P, flags: [.option])))
+        model.isConfirmingClear = false
+        precondition(store.entries() == beforeConfirmation, "Confirmation shortcuts and cancellation must leave history untouched")
         model.isPresented = false
 
         try checkBoundedHistory(in: folder.appendingPathComponent("paging"), defaults: defaults, pasteboard: pasteboard)

@@ -164,6 +164,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     private func hidePanel() {
         guard model?.isPresented == true else { return }
+        // The confirmation takes keyboard focus; keep its parent panel alive.
+        guard model?.isConfirmingClear != true else { return }
         model?.dismiss()
         panel?.orderOut(nil)
         // Release SwiftUI's retained row images, text layout, and editor undo state.

@@ -76,7 +76,7 @@ This copies Stash to Applications, clears macOS’s download quarantine for this
 - Click **Add tags**, type comma-separated names such as `work, design`, then click **Save tags** (or press Return). **Edit tags** changes or removes them. The Tags metadata row is hidden when empty.
 - Select a supported text or code file to preview its current contents in a monospaced pane. Previews read at most 100 KB plus one byte to detect truncation, preserve indentation, and show a notice for binary, unsupported, or missing files. For a group of files, the first file is previewed. Return still copies the entire file or group; previewing does not edit the source file.
 - Restoring an item from Stash does not record it again. Consecutive copies of the same file group from another app update its copy count instead of adding another entry. Existing duplicate history entries are left intact.
-- Delete individual items or choose **Clear All** in the history panel to immediately remove retained history.
+- Delete individual items or choose **Clear All** in the history panel. Clear All asks for confirmation before permanently deleting all entries, including pinned items; choose **Cancel** to keep them.
 
 ## Storage and limits
 
