@@ -25,6 +25,7 @@ nonisolated enum PanelShortcut: String, CaseIterable, Identifiable {
 nonisolated struct HotKeyBinding: Codable, Equatable {
     var keyCode: UInt32
     var modifiers: UInt32
+    var keyLabel: String? = nil
     static let openDefault = HotKeyBinding(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey))
     static let recordDefault = HotKeyBinding(keyCode: UInt32(kVK_ANSI_R), modifiers: UInt32(optionKey))
     var display: String {
@@ -33,14 +34,20 @@ nonisolated struct HotKeyBinding: Codable, Equatable {
         return result + keyName
     }
     private var keyName: String {
-        let names: [UInt32: String] = [UInt32(kVK_Space): "Space", UInt32(kVK_Return): "Return", UInt32(kVK_UpArrow): "↑", UInt32(kVK_DownArrow): "↓", UInt32(kVK_Delete): "Delete", UInt32(kVK_ANSI_A): "A", UInt32(kVK_ANSI_P): "P", UInt32(kVK_ANSI_Q): "Q", UInt32(kVK_ANSI_R): "R", UInt32(kVK_ANSI_X): "X"]
-        return names[keyCode] ?? "Key"
+        let names: [UInt32: String] = [UInt32(kVK_Space): "Space", UInt32(kVK_Return): "Return", UInt32(kVK_UpArrow): "↑", UInt32(kVK_DownArrow): "↓", UInt32(kVK_LeftArrow): "←", UInt32(kVK_RightArrow): "→", UInt32(kVK_Delete): "Delete", UInt32(kVK_ForwardDelete): "Forward Delete", UInt32(kVK_Tab): "Tab", UInt32(kVK_Escape): "Escape", UInt32(kVK_Home): "Home", UInt32(kVK_End): "End", UInt32(kVK_PageUp): "Page Up", UInt32(kVK_PageDown): "Page Down", UInt32(kVK_ANSI_A): "A", UInt32(kVK_ANSI_P): "P", UInt32(kVK_ANSI_Q): "Q", UInt32(kVK_ANSI_R): "R", UInt32(kVK_ANSI_X): "X"]
+        let functionKeys = [kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10, kVK_F11, kVK_F12, kVK_F13, kVK_F14, kVK_F15, kVK_F16, kVK_F17, kVK_F18, kVK_F19, kVK_F20]
+        if let index = functionKeys.firstIndex(of: Int(keyCode)) { return "F\(index + 1)" }
+        return names[keyCode] ?? keyLabel ?? "Key \(keyCode)"
     }
     static func from(_ event: NSEvent, requiresModifier: Bool) -> HotKeyBinding? {
         let flags = event.modifierFlags; var modifiers: UInt32 = 0
         if flags.contains(.command) { modifiers |= UInt32(cmdKey) }; if flags.contains(.option) { modifiers |= UInt32(optionKey) }; if flags.contains(.control) { modifiers |= UInt32(controlKey) }; if flags.contains(.shift) { modifiers |= UInt32(shiftKey) }
         guard !requiresModifier || modifiers != 0 else { return nil }
-        return HotKeyBinding(keyCode: UInt32(event.keyCode), modifiers: modifiers)
+        let label = event.charactersIgnoringModifiers?.uppercased()
+        let printable = label.flatMap { value in
+            value.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) } && !value.isEmpty ? value : nil
+        }
+        return HotKeyBinding(keyCode: UInt32(event.keyCode), modifiers: modifiers, keyLabel: printable)
     }
 }
 
@@ -99,40 +106,87 @@ struct ShortcutSettingsView: View {
          .formStyle(.grouped)
          Divider()
          VStack(alignment: .leading, spacing: 8) {
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
+            if !error.isEmpty {
+                Label(error, systemImage: "exclamationmark.circle")
+                    .font(.caption).foregroundStyle(.red)
+            }
             HStack {
                 Button("Reset shortcuts") { openShortcut = .openDefault; recordingShortcut = .recordDefault; panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, $0.defaultBinding) }) }
                     .modifier(StashActionStyle())
                 Spacer()
-                Button(saved ? "Saved" : "Save changes") { save() }.keyboardShortcut(.defaultAction)
+                Text(saved ? "Saved" : "")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(width: 40)
+                    .accessibilityHidden(!saved)
+                Button("Save changes") { save() }.keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
+                    .disabled(saved)
             }
          }.padding(16)
         }.frame(width: 460, height: 620)
          .background(StashPanelBackground())
+         .onChange(of: storageLimit) { _, _ in clearFeedback() }
+         .onChange(of: retentionMinutes) { _, _ in clearFeedback() }
+         .onChange(of: allBindings) { _, _ in clearFeedback() }
     }
-    private func row(_ title: String, binding: Binding<HotKeyBinding>, requiresModifier: Bool) -> some View { HStack { Text(title).font(.body.weight(.medium)); Spacer(); HotKeyRecorder(binding: binding, requiresModifier: requiresModifier).frame(width: 150, height: 30) } }
+    private var allBindings: [HotKeyBinding] { [openShortcut, recordingShortcut] + PanelShortcut.allCases.map { panelBindings[$0] ?? $0.defaultBinding } }
+    private func clearFeedback() { saved = false; error = "" }
+    private func row(_ title: String, binding: Binding<HotKeyBinding>, requiresModifier: Bool) -> some View {
+        HStack {
+            Text(title).font(.body.weight(.medium))
+            Spacer()
+            HotKeyRecorder(binding: binding, requiresModifier: requiresModifier)
+                .frame(width: 150, height: 30)
+                .accessibilityLabel("\(title) shortcut")
+                .accessibilityValue(binding.wrappedValue.display)
+        }
+    }
     private func binding(for action: PanelShortcut) -> Binding<HotKeyBinding> { Binding(get: { panelBindings[action] ?? action.defaultBinding }, set: { panelBindings[action] = $0 }) }
     private func save() {
-        let all = [openShortcut, recordingShortcut] + PanelShortcut.allCases.map { panelBindings[$0] ?? $0.defaultBinding }
+        let all = allBindings
         guard Set(all.map { "\($0.keyCode):\($0.modifiers)" }).count == all.count else { error = "Each action needs a different shortcut."; return }
         guard onSave(openShortcut, recordingShortcut, panelBindings) else { error = "macOS could not register one of the global shortcuts."; return }
         if storageLimit != model.storageLimit { model.setStorageLimit(storageLimit) }
         if retentionMinutes != model.retentionMinutes { model.setRetentionMinutes(retentionMinutes) }
-        error = ""; saved = true; DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { saved = false }
+        error = ""; saved = true
     }
 }
 
 struct HotKeyRecorder: NSViewRepresentable {
     @Binding var binding: HotKeyBinding
     let requiresModifier: Bool
-    func makeNSView(context: Context) -> RecorderButton { let button = RecorderButton(); button.bezelStyle = .rounded; button.setButtonType(.momentaryPushIn); button.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular); button.onCapture = { binding = $0 }; button.onCancel = { button.title = binding.display }; button.requiresModifier = requiresModifier; button.title = binding.display; return button }
-    func updateNSView(_ button: RecorderButton, context: Context) { button.onCapture = { binding = $0 }; button.onCancel = { button.title = binding.display }; button.requiresModifier = requiresModifier; if !button.isRecording { button.title = binding.display } }
+    func makeNSView(context: Context) -> RecorderButton {
+        let button = RecorderButton()
+        button.bezelStyle = .rounded
+        button.setButtonType(.momentaryPushIn)
+        button.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        button.target = button
+        button.action = #selector(RecorderButton.beginRecording)
+        updateNSView(button, context: context)
+        return button
+    }
+    func updateNSView(_ button: RecorderButton, context: Context) {
+        button.onCapture = { binding = $0 }
+        button.onCancel = { [weak button] in button?.title = binding.display }
+        button.requiresModifier = requiresModifier
+        button.toolTip = "Activate to record a shortcut. Press Escape to cancel."
+        if !button.isRecording { button.title = binding.display }
+    }
 }
 final class RecorderButton: NSButton {
     var onCapture: ((HotKeyBinding) -> Void)?; var onCancel: (() -> Void)?; var requiresModifier = false; var isRecording = false
     override var acceptsFirstResponder: Bool { true }
-    override func mouseDown(with event: NSEvent) { isRecording = true; title = "Press shortcut…"; window?.makeFirstResponder(self) }
-    override func keyDown(with event: NSEvent) { if event.keyCode == UInt16(kVK_Escape) { isRecording = false; return }; guard let binding = HotKeyBinding.from(event, requiresModifier: requiresModifier) else { NSSound.beep(); return }; isRecording = false; onCapture?(binding) }
+    @objc func beginRecording() { isRecording = true; title = "Press shortcut…"; window?.makeFirstResponder(self) }
+    override func keyDown(with event: NSEvent) {
+        guard isRecording else { super.keyDown(with: event); return }
+        if event.keyCode == UInt16(kVK_Escape) { isRecording = false; onCancel?(); return }
+        guard let binding = HotKeyBinding.from(event, requiresModifier: requiresModifier) else {
+            title = "Add a modifier…"
+            return
+        }
+        isRecording = false
+        title = binding.display
+        onCapture?(binding)
+    }
     override func resignFirstResponder() -> Bool { let shouldRestore = isRecording; isRecording = false; if shouldRestore { onCancel?() }; return super.resignFirstResponder() }
 }

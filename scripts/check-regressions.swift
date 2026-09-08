@@ -100,11 +100,13 @@ struct RegressionChecks {
         model.isPresented = true
         model.reload()
         let history = HistoryView(model: model)
-        func key(_ code: Int, flags: NSEvent.ModifierFlags = []) -> NSEvent {
-            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: keyboardWindow.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: UInt16(code))!
+        func key(_ code: Int, flags: NSEvent.ModifierFlags = [], characters: String = "") -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: keyboardWindow.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: UInt16(code))!
         }
         let selected = model.selectedID
         model.isEditingInspector = true
+        precondition(!history.handleKeyEvent(key(kVK_Escape)))
+        precondition(!history.handleKeyEvent(key(kVK_ANSI_S, flags: [.command])))
         precondition(!history.handleKeyEvent(key(kVK_Return)))
         precondition(!history.handleKeyEvent(key(kVK_DownArrow)))
         precondition(model.selectedID == selected)
@@ -119,7 +121,36 @@ struct RegressionChecks {
         precondition(!history.handleKeyEvent(key(kVK_ANSI_P, flags: [.option])))
         model.isConfirmingClear = false
         precondition(store.entries() == beforeConfirmation, "Confirmation shortcuts and cancellation must leave history untouched")
+        var dismissed = false
+        model.onDismiss = { dismissed = true }
+        precondition(history.handleKeyEvent(key(kVK_Escape)) && dismissed)
+        var pauseValue: Bool?
+        model.onPauseChanged = { pauseValue = $0 }
+        model.isRecording = false
+        precondition(model.paused && pauseValue == true)
+        model.isRecording = true
+        precondition(!model.paused && pauseValue == false)
+
+        let recorder = RecorderButton()
+        recorder.target = recorder
+        recorder.action = #selector(RecorderButton.beginRecording)
+        recorder.requiresModifier = true
+        recorder.onCancel = { [weak recorder] in recorder?.title = "⌥Space" }
+        var captured: HotKeyBinding?
+        recorder.onCapture = { captured = $0 }
+        recorder.performClick(nil)
+        precondition(recorder.isRecording)
+        recorder.keyDown(with: key(kVK_ANSI_A))
+        precondition(recorder.isRecording && captured == nil && recorder.title == "Add a modifier…")
+        recorder.keyDown(with: key(kVK_Escape))
+        precondition(!recorder.isRecording && captured == nil && recorder.title == "⌥Space")
+        recorder.performClick(nil)
+        recorder.keyDown(with: key(kVK_ANSI_S, flags: [.command], characters: "s"))
+        precondition(captured?.display == "⌘S" && recorder.title == "⌘S")
+        let legacyBinding = try JSONDecoder().decode(HotKeyBinding.self, from: Data("{\"keyCode\":49,\"modifiers\":2048}".utf8))
+        precondition(legacyBinding == .openDefault)
         model.isPresented = false
+        print("Passed: editor Escape/Save routing, history Escape, recording switch semantics, native shortcut activation/cancel/validation, key labels, and legacy shortcut decoding.")
 
         try checkBoundedHistory(in: folder.appendingPathComponent("paging"), defaults: defaults, pasteboard: pasteboard)
         try checkFiles(in: folder.appendingPathComponent("files"), defaults: defaults)

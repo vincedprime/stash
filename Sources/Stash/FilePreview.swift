@@ -31,7 +31,7 @@ struct FilePreview: Equatable {
                 return unavailable("Download this file locally to preview it.")
             }
             guard extensions.contains(url.pathExtension.lowercased()) || names.contains(name.lowercased()) else {
-                return unavailable("No text preview for this file type. Press Return to copy the file.")
+                return unavailable("Text previews are not available for this file type.")
             }
             let file = try FileHandle(forReadingFrom: url)
             defer { try? file.close() }
@@ -49,10 +49,10 @@ struct FilePreview: Equatable {
             }
             guard let text, !text.unicodeScalars.contains(where: {
                 ($0.value < 32 && ![9, 10, 13].contains($0.value)) || $0.value == 127
-            }) else { return unavailable("Binary or unsupported text encoding. Press Return to copy the file.") }
+            }) else { return unavailable("This file contains binary data or an unsupported text encoding.") }
             return FilePreview(name: name, text: text,
-                notice: truncated ? "Preview truncated at 100 KB. Return copies the entire file."
-                                  : "Current file contents · Return copies the file")
+                notice: truncated ? "Preview truncated at 100 KB. Copying restores the entire file."
+                                  : "Current file contents · Copying restores the file")
         } catch CocoaError.fileReadNoSuchFile {
             return unavailable("File not found. It may have been moved or deleted.")
         } catch {
@@ -80,8 +80,11 @@ struct FileEntryPreview: View {
                             .fixedSize(horizontal: true, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                } else { Spacer(minLength: 0) }
-                Text(preview.notice).font(.caption).foregroundStyle(.secondary)
+                    Text(preview.notice).font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ContentUnavailableView("Preview unavailable", systemImage: "doc.text.magnifyingglass", description: Text(preview.notice))
+                        .frame(maxHeight: .infinity)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -18,8 +18,10 @@ final class HistoryModel: ObservableObject {
     @Published var retentionMinutes: Int
     @Published var isEditingInspector = false
     @Published var isConfirmingClear = false
+    @Published private(set) var shortcutBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
     weak var historyWindow: NSWindow?
     var onShowSettings: (() -> Void)?
+    var onDismiss: (() -> Void)?
     let store: ClipboardStore
     var onRestore: ((ClipboardEntry) -> Void)?
     var onPauseChanged: ((Bool) -> Void)?
@@ -46,6 +48,16 @@ final class HistoryModel: ObservableObject {
         retentionTimer?.tolerance = 5
     }
     var selectedEntry: ClipboardEntry? { entries.first { $0.id == selectedID } }
+
+    func refreshShortcutBindings() {
+        shortcutBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
+    }
+
+    func binding(for action: PanelShortcut) -> HotKeyBinding { shortcutBindings[action] ?? action.defaultBinding }
+    var isRecording: Bool {
+        get { !paused }
+        set { setPaused(!newValue) }
+    }
 
     func reload() {
         searchTask?.cancel()
@@ -247,6 +259,18 @@ struct HistoryView: View {
                       .padding(.vertical, 6)
                     }
                     .frame(width: 420)
+                    .overlay {
+                        if model.entries.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: hasSearchOrFilter ? "magnifyingglass" : "doc.on.clipboard")
+                                    .font(.title2).foregroundStyle(.secondary)
+                                Text(hasSearchOrFilter ? "No matching entries" : "History is empty").font(.headline)
+                                Text(hasSearchOrFilter ? "Try another search or filter." : "Copy text, images, or files to get started.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }.padding(24).allowsHitTesting(false)
+                        }
+                    }
                     .onChange(of: model.selectedID) { _, selectedID in
                         if let selectedID { proxy.scrollTo(selectedID, anchor: .center) }
                     }
@@ -262,14 +286,18 @@ struct HistoryView: View {
             Divider()
             statusBar
             Divider()
-            HStack(spacing: 14) {
+            ScrollView(.horizontal) {
+             HStack(spacing: 14) {
                 Text("Shortcuts")
-                Text("↑↓ Navigate")
-                Text("↩ Copy")
-                Text("⌥P Pin")
-                Text("⌥X Delete")
-                Text("⌥Q Filter")
+                Text("\(model.binding(for: .up).display) \(model.binding(for: .down).display) Navigate")
+                Text("\(model.binding(for: .copy).display) Copy")
+                Text("\(model.binding(for: .pin).display) Pin")
+                Text("\(model.binding(for: .delete).display) Delete")
+                Text("\(model.binding(for: .filter).display) Filter")
+             }
             }
+            .scrollIndicators(.hidden)
+            .frame(height: 16)
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
@@ -280,8 +308,10 @@ struct HistoryView: View {
         .background(StashPanelBackground())
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
-        .onChange(of: model.isEditingInspector) { _, editing in if editing { searchIsFocused = false } }
+        .onChange(of: model.isEditingInspector) { _, editing in searchIsFocused = !editing }
     }
+
+    private var hasSearchOrFilter: Bool { !model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.filter != .all }
 
     func handleKeyEvent(_ event: NSEvent) -> Bool {
         guard model.isPresented, event.window === model.historyWindow else { return false }
@@ -291,6 +321,10 @@ struct HistoryView: View {
         let standardKeys: Set<UInt16> = [UInt16(kVK_ANSI_A), UInt16(kVK_ANSI_C), UInt16(kVK_ANSI_X), UInt16(kVK_ANSI_V), UInt16(kVK_ANSI_Z), UInt16(kVK_ANSI_Q), UInt16(kVK_ANSI_Comma)]
         if modifiers.contains(.command), standardKeys.contains(event.keyCode) { return false }
         if model.isEditingInspector { return false }
+        if event.keyCode == UInt16(kVK_Escape), modifiers.isEmpty {
+            model.onDismiss?()
+            return true
+        }
         if let editor = event.window?.firstResponder as? NSTextView, !editor.isFieldEditor {
             return false
         }
@@ -302,7 +336,7 @@ struct HistoryView: View {
     }
 
     private func matches(_ event: NSEvent, _ action: PanelShortcut) -> Bool {
-        let binding = ShortcutStorage.binding(for: action)
+        let binding = model.binding(for: action)
         let flags = event.modifierFlags
         let modifiers: UInt32 = (flags.contains(.command) ? UInt32(cmdKey) : 0) | (flags.contains(.option) ? UInt32(optionKey) : 0) | (flags.contains(.control) ? UInt32(controlKey) : 0) | (flags.contains(.shift) ? UInt32(shiftKey) : 0)
         return UInt32(event.keyCode) == binding.keyCode && modifiers == binding.modifiers
@@ -311,6 +345,7 @@ struct HistoryView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             TextField("Search clipboard", text: $model.query)
+                .accessibilityLabel("Search clipboard history")
                 .textFieldStyle(.roundedBorder)
                 .focused($searchIsFocused)
                 .onSubmit { model.restoreSelection() }
@@ -339,8 +374,9 @@ struct HistoryView: View {
             }
             Spacer()
             Button { model.onShowSettings?() } label: { Image(systemName: "gearshape") }
+                .accessibilityLabel("Settings")
                 .help("Settings (⌘,)")
-            Toggle(model.paused ? "Recording paused" : "Recording", isOn: Binding(get: { model.paused }, set: { model.setPaused($0) }))
+            Toggle(model.paused ? "Recording paused" : "Recording", isOn: Binding(get: { model.isRecording }, set: { model.isRecording = $0 }))
                 .toggleStyle(.switch).controlSize(.small)
         }
         .font(.caption)
@@ -360,11 +396,17 @@ private struct EntryViewer: View {
         Group {
             if let entry {
                 VStack(alignment: .leading, spacing: 8) {
-                    if entry.kind == .image, let image = model.image(for: entry) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if entry.kind == .image {
+                        if let image = model.image(for: entry) {
+                            Image(nsImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .accessibilityLabel("Copied image preview")
+                        } else {
+                            ContentUnavailableView("Image unavailable", systemImage: "photo", description: Text("The saved image could not be opened."))
+                                .frame(maxHeight: .infinity)
+                        }
                     } else if entry.kind == .file {
                         FileEntryPreview(entry: entry)
                     } else if editing {
@@ -475,15 +517,19 @@ private struct TextEntryEditor: View {
         VStack(alignment: .trailing, spacing: 6) {
             FullTextEditor(entryID: entry.id, store: model.store, session: session)
                 .frame(maxHeight: .infinity)
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
+            if !error.isEmpty { Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red) }
             HStack {
                 Button("Cancel", action: onFinish)
+                    .modifier(StashActionStyle())
                 Spacer()
                 Button("Save") {
                     if let text = session.textView?.string, model.updateText(text, for: entry) { onFinish() }
                     else { error = "Could not save. Check the storage limit in Settings." }
                 }
                 .disabled(!session.hasChanges)
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("s", modifiers: .command)
+                .help("Save changes (⌘S)")
             }
         }
         .onExitCommand(perform: onFinish)
@@ -508,10 +554,18 @@ private struct EntryTagsEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("work, design, ideas", text: $tags)
+                .accessibilityLabel("Tags, separated by commas")
                 .textFieldStyle(.roundedBorder).focused($focused).onSubmit(save)
             Text("Separate tags with commas. Search by any tag.").font(.caption).foregroundStyle(.secondary)
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
-            HStack { Button("Cancel", action: onFinish); Spacer(); Button("Save tags", action: save) }
+            if !error.isEmpty { Label(error, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red) }
+            HStack {
+                Button("Cancel", action: onFinish).modifier(StashActionStyle())
+                Spacer()
+                Button("Save tags", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("s", modifiers: .command)
+                    .help("Save tags (⌘S)")
+            }
         }
         .onAppear { focused = true }
         .onExitCommand(perform: onFinish)

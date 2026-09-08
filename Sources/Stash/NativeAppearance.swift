@@ -28,9 +28,10 @@ struct StashToolbarSurface: ViewModifier {
 }
 
 struct StashActionStyle: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
+        if #available(macOS 26, *), !reduceTransparency {
             content.buttonStyle(.glass).foregroundStyle(.primary)
         } else {
             content.buttonStyle(.bordered)

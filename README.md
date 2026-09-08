@@ -68,6 +68,8 @@ This copies Stash to Applications, clears macOS’s download quarantine for this
 
 On macOS Tahoe, Stash uses native glass controls, a system material background, rounded grey selection, and grouped settings. The preview pane stays opaque for readability. Older supported macOS versions use standard bordered controls; system appearance and reduced-transparency preferences are respected.
 
+History opens and navigates without custom animations. Escape closes history; inside an editor it cancels the edit. The shortcut footer shows your saved bindings. Text and tag editors use **Command-S** to save, and the recording switch is on while capture is running. Settings stays open when you switch apps, preserves its current draft, and shows save feedback without shifting the buttons. Activate a shortcut recorder by mouse or keyboard; Escape cancels capture and restores the previous label.
+
 - Click the menu-bar icon or press `Option-Space` to open history.
 - Type in the search field to find copied content or saved tags. Use **Links** or **Colors** to narrow the history.
 - Select an item to put it back on the clipboard, then paste into your app with `Command-V`.

@@ -7,11 +7,6 @@ final class HistoryPanel: NSPanel {
     override func resignMain() { super.resignMain(); onResignKey?() }
 }
 
-final class TransientPanel: NSPanel {
-    override func resignKey() { super.resignKey(); orderOut(nil) }
-    override func resignMain() { super.resignMain(); orderOut(nil) }
-}
-
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -26,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let store = try ClipboardStore()
             let model = HistoryModel(store: store)
             model.onRestore = { [weak self] _ in self?.hidePanel() }
+            model.onDismiss = { [weak self] in self?.hidePanel() }
             model.onShowSettings = { [weak self] in self?.showSettings() }
             self.model = model
             let monitor = ClipboardMonitor(store: store)
@@ -76,27 +72,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         quit.target = NSApp
     }
 
-    func menuWillOpen(_ menu: NSMenu) { hidePanel(); settingsPanel?.orderOut(nil) }
+    func menuWillOpen(_ menu: NSMenu) { hidePanel() }
 
     @objc private func showSettings() {
         guard let model else { return }
         hidePanel()
+        if let settingsPanel, settingsPanel.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            settingsPanel.makeKeyAndOrderFront(nil)
+            return
+        }
         let panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
         let view = ShortcutSettingsView(model: model, open: openBinding, recording: recordingBinding, panel: panelBindings) { [weak self] open, record, panel in
             guard let self, self.shortcut?.register(open: open, record: record) == true else { return false }
             self.save(open, forKey: "openShortcut")
             self.save(record, forKey: "recordShortcut")
             panel.forEach { ShortcutStorage.save($0.value, for: $0.key) }
+            model.refreshShortcutBindings()
             return true
         }
         if settingsPanel == nil {
-            let panel = TransientPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 620), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 620), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             panel.title = "Stash Settings"
             panel.titlebarAppearsTransparent = true
             panel.titlebarSeparatorStyle = .none
-            panel.isFloatingPanel = true
-            panel.hidesOnDeactivate = true
-            panel.collectionBehavior = [.transient]
+            panel.isFloatingPanel = false
+            panel.hidesOnDeactivate = false
+            panel.animationBehavior = .none
             panel.contentView = NSHostingView(rootView: view)
             settingsPanel = panel
         } else {
@@ -152,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if panel == nil {
             let panel = HistoryPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash"
+            panel.animationBehavior = .none
             panel.titlebarAppearsTransparent = true
             panel.titlebarSeparatorStyle = .none
             panel.isFloatingPanel = true
