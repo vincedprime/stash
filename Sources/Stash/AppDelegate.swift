@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             settingsPanel.makeKeyAndOrderFront(nil)
             return
         }
-        let panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, ShortcutStorage.binding(for: $0)) })
+        let panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.configurable.map { ($0, ShortcutStorage.binding(for: $0)) })
         let view = ShortcutSettingsView(model: model, open: openBinding, recording: recordingBinding, panel: panelBindings) { [weak self] open, record, panel in
             guard let self, self.shortcut?.register(open: open, record: record) == true else { return false }
             self.save(open, forKey: "openShortcut")

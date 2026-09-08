@@ -283,14 +283,19 @@ final class ClipboardStore {
 
     private var statement: OpaquePointer?
     private func classifyLegacyText() throws {
-        guard scalarInt("PRAGMA user_version") == 0 else { return }
+        let version = scalarInt("PRAGMA user_version")
+        guard version < 2 else { return }
         var query: OpaquePointer?
-        guard sqlite3_prepare_v2(database, "SELECT id,text FROM entries WHERE kind = 'text' AND byte_count <= 4096", -1, &query, nil) == SQLITE_OK else { throw StoreError.sql }
+        // Version 2 corrects old bare-hex false positives. Native colors were
+        // stored with # already, so their classification stays intact.
+        let kinds = version == 0 ? "kind IN ('text','color')" : "kind = 'color'"
+        guard sqlite3_prepare_v2(database, "SELECT id,text,kind FROM entries WHERE \(kinds) AND byte_count <= 4096", -1, &query, nil) == SQLITE_OK else { throw StoreError.sql }
         var changes: [(String, EntryKind)] = []
         while sqlite3_step(query) == SQLITE_ROW {
-            guard let id = sqlite3_column_text(query, 0), let text = sqlite3_column_text(query, 1) else { continue }
+            guard let id = sqlite3_column_text(query, 0), let text = sqlite3_column_text(query, 1),
+                  let previousKind = sqlite3_column_text(query, 2) else { continue }
             let kind = TextContent.kind(for: String(cString: text))
-            if kind != .text { changes.append((String(cString: id), kind)) }
+            if kind.rawValue != String(cString: previousKind) { changes.append((String(cString: id), kind)) }
         }
         sqlite3_finalize(query)
         try execute("BEGIN TRANSACTION")
@@ -298,7 +303,7 @@ final class ClipboardStore {
             for (id, kind) in changes {
                 guard executeQuietly("UPDATE entries SET kind = ? WHERE id = ?", bindings: [.text(kind.rawValue), .text(id)]) else { throw StoreError.sql }
             }
-            try execute("PRAGMA user_version = 1")
+            try execute("PRAGMA user_version = 2")
             try execute("COMMIT")
         } catch {
             try? execute("ROLLBACK")

@@ -71,6 +71,7 @@ On macOS Tahoe, Stash uses native glass controls, a system material background, 
 History opens and navigates without custom animations. Escape closes history; inside an editor it cancels the edit. The shortcut footer shows your saved bindings. Text and tag editors use **Command-S** to save, and the recording switch is on while capture is running. Settings stays open when you switch apps, preserves its current draft, and shows save feedback without shifting the buttons. Activate a shortcut recorder by mouse or keyboard; Escape cancels capture and restores the previous label.
 
 - Click the menu-bar icon or press `Option-Space` to open history.
+- Up/Down arrows navigate history and Return copies the selected entry. These controls are fixed; Settings offers customization for Pin, Delete, Cycle filter, and the two global shortcuts.
 - Type in the search field to find copied content or saved tags. Use **Links** or **Colors** to narrow the history.
 - Select an item to put it back on the clipboard, then paste into your app with `Command-V`.
 - Pin an item to protect it from automatic cleanup.
@@ -86,7 +87,7 @@ History opens and navigates without custom animations. Escape closes history; in
 
 - Stash saves its database and image files at `~/Library/Application Support/Stash`.
 - Text, HTTP/HTTPS links, PNG-normalized images, local file references, native colours, and hex colour literals are supported. File contents are not backed up; the original files must still exist when pasted.
-- Hex detection accepts `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, and six hexadecimal digits such as `F7ADAD`. It checks only a whole literal; a sentence containing a colour stays text. Link classification checks whole URLs up to 4 KB. No language detection or full-document analysis runs.
+- Hex text detection requires `#`: `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`. Bare values such as `F7ADAD` and `123456` remain text; existing bare-hex color entries are corrected on upgrade. Native color copies are still supported. It checks only a whole literal; a sentence containing a colour stays text. Link classification checks whole URLs up to 4 KB. No language detection or full-document analysis runs.
 - The default cap is 50 MB. Settings offers 25, 50, 100, or 250 MB.
 - When space runs low, Stash removes the oldest unpinned entries first. If pinned entries fill the cap, recording pauses until space is freed.
 - Auto-delete defaults to **Never**. Options are one hour, one day, or one week since the entry's most recent copy. Cleanup runs at launch, when history opens, and roughly once a minute while Stash runs, including when recording is paused. Sleep/quit delays cleanup until Stash resumes. Pinned items are excluded.

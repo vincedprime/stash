@@ -65,10 +65,9 @@ nonisolated enum TextContent {
     }
 
     static func rgba(_ text: String) -> (red: Double, green: Double, blue: Double, alpha: Double)? {
-        guard text.utf8.count <= 9 else { return nil }
-        let prefixed = text.hasPrefix("#")
-        let digits = prefixed ? String(text.dropFirst()) : text
-        guard (prefixed ? [3, 4, 6, 8].contains(digits.count) : digits.count == 6),
+        guard text.hasPrefix("#"), text.utf8.count <= 9 else { return nil }
+        let digits = String(text.dropFirst())
+        guard [3, 4, 6, 8].contains(digits.count),
               digits.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }) else { return nil }
         let expanded = digits.count <= 4 ? digits.map { "\($0)\($0)" }.joined() : digits
         guard let value = UInt64(expanded, radix: 16) else { return nil }

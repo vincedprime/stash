@@ -16,7 +16,7 @@ struct RegressionChecks {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        for (text, kind) in [("#F7ADAD", EntryKind.color), ("F7ADAD", .color), ("#abc", .color),
+        for (text, kind) in [("#F7ADAD", EntryKind.color), ("F7ADAD", .text), ("123456", .text), ("abcdef", .text), ("#abc", .color), ("#abcd", .color), (" \n#f7adad\t", .color),
                              ("#AABBCC80", .color), ("#gggggg", .text), ("hello #F7ADAD", .text),
                              ("https://example.com/path?q=1", .link), ("http://localhost/test", .link),
                              ("https://example.com and words", .text), ("file:///tmp/a", .text),
@@ -25,6 +25,7 @@ struct RegressionChecks {
         }
         precondition(TextContent.rgba("#F7ADAD")!.red == 247.0 / 255)
         precondition(TextContent.rgba("#AABBCC80")!.alpha == 128.0 / 255)
+        precondition(TextContent.rgba("F7ADAD") == nil)
 
         let store = try ClipboardStore(root: folder, defaults: defaults)
         precondition(store.saveText("#F7ADAD", sourceApp: "Sample app") == .saved)
@@ -88,6 +89,29 @@ struct RegressionChecks {
         let migrated = try ClipboardStore(root: legacy, defaults: defaults)
         let entry = migrated.entries().first!
         precondition(entry.kind == .color && entry.isPinned && entry.id.uuidString == id && entry.copyCount == 3)
+        // Upgrade an existing v1 color without changing payload, tags, or pins.
+        let bareID = UUID()
+        precondition(sqlite3_open(legacy.appendingPathComponent("history.sqlite").path, &db) == SQLITE_OK)
+        precondition(sqlite3_exec(db, "INSERT INTO entries(id,created_at,kind,text,byte_count,pinned,copy_count,tags) VALUES('\(bareID)',42,'color','F7ADAD',6,1,7,'example'); PRAGMA user_version = 1;", nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        let corrected = try ClipboardStore(root: legacy, defaults: defaults)
+        let bare = corrected.entry(id: bareID)!
+        precondition(bare.kind == .text && bare.text == "F7ADAD" && bare.isPinned && bare.copyCount == 7 && bare.tags == "example" && bare.createdAt.timeIntervalSince1970 == 42)
+        precondition(corrected.entry(id: entry.id)?.kind == .color)
+        precondition(corrected.saveColor(.red, sourceApp: "Fixture") == .saved)
+        precondition(corrected.entries(filter: .color).contains { $0.text == "#FF0000" })
+
+        let customBinding = HotKeyBinding(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(optionKey))
+        for action in [PanelShortcut.up, .down, .copy] {
+            defaults.set(try JSONEncoder().encode(customBinding), forKey: "panelShortcut.\(action.rawValue)")
+            precondition(ShortcutStorage.binding(for: action, defaults: defaults) == action.defaultBinding,
+                         "Removed settings must not leave hidden custom navigation bindings active")
+        }
+        defaults.set(try JSONEncoder().encode(customBinding), forKey: "panelShortcut.pin")
+        precondition(ShortcutStorage.binding(for: .pin, defaults: defaults) == customBinding)
+        defaults.set(try JSONEncoder().encode(PanelShortcut.up.defaultBinding), forKey: "panelShortcut.pin")
+        precondition(ShortcutStorage.binding(for: .pin, defaults: defaults) == PanelShortcut.pin.defaultBinding)
+        precondition(PanelShortcut.configurable == [.pin, .delete, .filter])
 
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)

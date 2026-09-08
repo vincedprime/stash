@@ -5,6 +5,8 @@ import SwiftUI
 nonisolated enum PanelShortcut: String, CaseIterable, Identifiable {
     case up, down, copy, pin, delete, filter
     var id: String { rawValue }
+    static let configurable: [Self] = [.pin, .delete, .filter]
+    var isConfigurable: Bool { Self.configurable.contains(self) }
     var title: String {
         switch self {
         case .up: "Move up"; case .down: "Move down"; case .copy: "Copy selected"; case .pin: "Pin selected"; case .delete: "Delete selected"; case .filter: "Cycle filter"
@@ -52,11 +54,18 @@ nonisolated struct HotKeyBinding: Codable, Equatable {
 }
 
 nonisolated enum ShortcutStorage {
-    nonisolated static func binding(for action: PanelShortcut) -> HotKeyBinding {
-        guard let data = UserDefaults.standard.data(forKey: "panelShortcut.\(action.rawValue)"), let binding = try? JSONDecoder().decode(HotKeyBinding.self, from: data) else { return action.defaultBinding }
+    nonisolated static func binding(for action: PanelShortcut, defaults: UserDefaults = .standard) -> HotKeyBinding {
+        guard action.isConfigurable,
+              let data = defaults.data(forKey: "panelShortcut.\(action.rawValue)"), let binding = try? JSONDecoder().decode(HotKeyBinding.self, from: data) else { return action.defaultBinding }
+        // Older configurations may have assigned an action to a now-fixed key.
+        let reserved = [PanelShortcut.up, .down, .copy].map(\.defaultBinding)
+        guard !reserved.contains(where: { $0.keyCode == binding.keyCode && $0.modifiers == binding.modifiers }) else { return action.defaultBinding }
         return binding
     }
-    nonisolated static func save(_ binding: HotKeyBinding, for action: PanelShortcut) { UserDefaults.standard.set(try? JSONEncoder().encode(binding), forKey: "panelShortcut.\(action.rawValue)") }
+    nonisolated static func save(_ binding: HotKeyBinding, for action: PanelShortcut) {
+        guard action.isConfigurable else { return }
+        UserDefaults.standard.set(try? JSONEncoder().encode(binding), forKey: "panelShortcut.\(action.rawValue)")
+    }
 }
 
 struct ShortcutSettingsView: View {
@@ -73,7 +82,7 @@ struct ShortcutSettingsView: View {
         self.model = model
         _storageLimit = State(initialValue: model.storageLimit)
         _retentionMinutes = State(initialValue: model.retentionMinutes)
-        _openShortcut = State(initialValue: open); _recordingShortcut = State(initialValue: recording); _panelBindings = State(initialValue: panel); self.onSave = onSave
+        _openShortcut = State(initialValue: open); _recordingShortcut = State(initialValue: recording); _panelBindings = State(initialValue: panel.filter { $0.key.isConfigurable }); self.onSave = onSave
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -100,7 +109,7 @@ struct ShortcutSettingsView: View {
             Text("Click a shortcut, then press your preferred key combination.")
           }
           Section("History shortcuts") {
-            ForEach(PanelShortcut.allCases) { action in row(action.title, binding: binding(for: action), requiresModifier: false) }
+            ForEach(PanelShortcut.configurable) { action in row(action.title, binding: binding(for: action), requiresModifier: false) }
           }
          }
          .formStyle(.grouped)
@@ -111,7 +120,7 @@ struct ShortcutSettingsView: View {
                     .font(.caption).foregroundStyle(.red)
             }
             HStack {
-                Button("Reset shortcuts") { openShortcut = .openDefault; recordingShortcut = .recordDefault; panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.allCases.map { ($0, $0.defaultBinding) }) }
+                Button("Reset shortcuts") { openShortcut = .openDefault; recordingShortcut = .recordDefault; panelBindings = Dictionary(uniqueKeysWithValues: PanelShortcut.configurable.map { ($0, $0.defaultBinding) }) }
                     .modifier(StashActionStyle())
                 Spacer()
                 Text(saved ? "Saved" : "")
@@ -129,7 +138,7 @@ struct ShortcutSettingsView: View {
          .onChange(of: retentionMinutes) { _, _ in clearFeedback() }
          .onChange(of: allBindings) { _, _ in clearFeedback() }
     }
-    private var allBindings: [HotKeyBinding] { [openShortcut, recordingShortcut] + PanelShortcut.allCases.map { panelBindings[$0] ?? $0.defaultBinding } }
+    private var allBindings: [HotKeyBinding] { [openShortcut, recordingShortcut] + PanelShortcut.allCases.map { $0.isConfigurable ? (panelBindings[$0] ?? $0.defaultBinding) : $0.defaultBinding } }
     private func clearFeedback() { saved = false; error = "" }
     private func row(_ title: String, binding: Binding<HotKeyBinding>, requiresModifier: Bool) -> some View {
         HStack {
