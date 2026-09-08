@@ -34,6 +34,8 @@ struct ClipboardEntry: Identifiable, Equatable, Sendable {
     let imageFormat: String?
     let thumbnailPath: String?
     let tags: String?
+    // List and inspector queries may return excerpts. Never restore these directly.
+    var textIsComplete = true
 
     var preview: String {
         switch kind {

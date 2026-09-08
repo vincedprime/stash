@@ -32,6 +32,7 @@ final class ClipboardStore {
           thumbnail_path TEXT, tags TEXT
         ); CREATE INDEX IF NOT EXISTS entries_created ON entries(created_at DESC);
         CREATE INDEX IF NOT EXISTS entries_unpinned_oldest ON entries(pinned, created_at ASC);
+        CREATE INDEX IF NOT EXISTS entries_history ON entries(pinned DESC, created_at DESC, id DESC);
         """)
         try? execute("ALTER TABLE entries ADD COLUMN source_app TEXT")
         try? execute("ALTER TABLE entries ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 1")
@@ -46,22 +47,41 @@ final class ClipboardStore {
 
     enum StoreError: Error { case open, sql, imageRead }
 
-    func entries(query: String = "", filter: HistoryFilter = .all) -> [ClipboardEntry] {
+    func entries(query: String = "", filter: HistoryFilter = .all,
+                 after cursor: ClipboardEntry? = nil, limit: Int = 100) -> [ClipboardEntry] {
         let searchText = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var clauses: [String] = []
         if let kind = filter.kind { clauses.append("kind = '\(kind.rawValue)'") }
         if !searchText.isEmpty { clauses.append("(text LIKE ? OR tags LIKE ?)") }
+        if cursor != nil { clauses.append("(pinned,created_at,id) < (?,?,?)") }
         let whereClause = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
-        let sql = "SELECT id,created_at,kind,text,image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path,tags FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC"
+        let sql = "SELECT id,created_at,kind,substr(text,1,360),image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path,tags FROM entries\(whereClause) ORDER BY pinned DESC,created_at DESC,id DESC LIMIT \(max(1, limit))"
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(statement) }
+        defer { sqlite3_finalize(statement); statement = nil }
         if !searchText.isEmpty {
             sqlite3_bind_text(statement, 1, "%\(searchText)%", -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(statement, 2, "%\(searchText)%", -1, SQLITE_TRANSIENT)
         }
+        if let cursor {
+            let first: Int32 = searchText.isEmpty ? 1 : 3
+            sqlite3_bind_int(statement, first, cursor.isPinned ? 1 : 0)
+            sqlite3_bind_double(statement, first + 1, cursor.createdAt.timeIntervalSince1970)
+            sqlite3_bind_text(statement, first + 2, cursor.id.uuidString, -1, SQLITE_TRANSIENT)
+        }
         var result: [ClipboardEntry] = []
         while sqlite3_step(statement) == SQLITE_ROW, let entry = decode(statement) { result.append(entry) }
         return result
+    }
+
+    // Full text is read only for an explicit restore or edit. Search still matches
+    // the original SQL text even when the returned list excerpt is short.
+    func entry(id: UUID, textLimit: Int? = nil) -> ClipboardEntry? {
+        let textColumn = textLimit.map { "substr(text,1,\(max(1, $0)))" } ?? "text"
+        let sql = "SELECT id,created_at,kind,\(textColumn),image_path,byte_count,pinned,source_app,copy_count,pixel_width,pixel_height,image_format,thumbnail_path,tags FROM entries WHERE id = ?"
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(statement); statement = nil }
+        sqlite3_bind_text(statement, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+        return sqlite3_step(statement) == SQLITE_ROW ? decode(statement) : nil
     }
 
     func byteUsage() -> Int {
@@ -179,8 +199,8 @@ final class ClipboardStore {
         cachedByteUsage = 0
     }
 
-    func restore(_ entry: ClipboardEntry) {
-        let pasteboard = NSPasteboard.general
+    func restore(_ summary: ClipboardEntry, to pasteboard: NSPasteboard = .general) {
+        guard let entry = entry(id: summary.id) else { return }
         pasteboard.clearContents()
         switch entry.kind {
         case .text, .color: pasteboard.setString(entry.text ?? "", forType: .string)
@@ -303,7 +323,7 @@ final class ClipboardStore {
     private func decode(_ statement: OpaquePointer?) -> ClipboardEntry? {
         guard let idText = sqlite3_column_text(statement, 0), let id = UUID(uuidString: String(cString: idText)),
               let kindText = sqlite3_column_text(statement, 2), let kind = EntryKind(rawValue: String(cString: kindText)) else { return nil }
-        return ClipboardEntry(id: id, createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)), kind: kind,
+        var entry = ClipboardEntry(id: id, createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)), kind: kind,
           text: sqlite3_column_text(statement, 3).map { String(cString: $0) }, imagePath: sqlite3_column_text(statement, 4).map { String(cString: $0) },
           byteCount: Int(sqlite3_column_int64(statement, 5)), isPinned: sqlite3_column_int(statement, 6) != 0,
           sourceApp: sqlite3_column_text(statement, 7).map { String(cString: $0) }, copyCount: Int(sqlite3_column_int64(statement, 8)),
@@ -312,5 +332,7 @@ final class ClipboardStore {
           imageFormat: sqlite3_column_text(statement, 11).map { String(cString: $0) },
           thumbnailPath: sqlite3_column_text(statement, 12).map { String(cString: $0) },
           tags: sqlite3_column_text(statement, 13).map { String(cString: $0) })
+        entry.textIsComplete = kind == .image || (entry.text?.utf8.count ?? 0) == entry.byteCount
+        return entry
     }
 }

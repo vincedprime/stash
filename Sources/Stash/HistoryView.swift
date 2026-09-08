@@ -7,7 +7,9 @@ final class HistoryModel: ObservableObject {
     @Published var query = "" { didSet { scheduleSearchReload() } }
     @Published var filter: HistoryFilter = .all { didSet { reload() } }
     @Published var entries: [ClipboardEntry] = []
-    @Published var selectedID: ClipboardEntry.ID?
+    @Published var selectedID: ClipboardEntry.ID? { didSet { refreshInspector() } }
+    @Published private(set) var inspectorEntry: ClipboardEntry?
+    @Published private(set) var hasMore = false
     @Published var usage = 0
     @Published var paused = false
     @Published var message = ""
@@ -23,8 +25,11 @@ final class HistoryModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var retentionTimer: Timer?
     private let defaults: UserDefaults
-    private let thumbnailCache = NSCache<NSString, NSImage>()
-    private let imageCache = NSCache<NSString, NSImage>()
+    let previewCache = PreviewImageCache()
+    static let pageSize = 100
+    static let textPreviewLimit = 16_000
+    private var loadedQuery = ""
+    private var loadedFilter = HistoryFilter.all
 
     init(store: ClipboardStore, defaults: UserDefaults = .standard) {
         self.store = store
@@ -32,8 +37,6 @@ final class HistoryModel: ObservableObject {
         usage = store.byteUsage()
         storageLimit = store.maximumBytes
         retentionMinutes = defaults.integer(forKey: "retentionMinutes")
-        thumbnailCache.countLimit = 160
-        imageCache.countLimit = 3
         applyRetention()
         retentionTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             // The timer is installed on the main run loop by this MainActor initializer.
@@ -45,9 +48,42 @@ final class HistoryModel: ObservableObject {
 
     func reload() {
         searchTask?.cancel()
-        entries = store.entries(query: query, filter: filter)
         usage = store.byteUsage()
+        guard isPresented else { return }
+        let sameSearch = loadedQuery == query && loadedFilter == filter
+        let count = sameSearch ? max(Self.pageSize, entries.count) : Self.pageSize
+        loadedQuery = query
+        loadedFilter = filter
+        let page = store.entries(query: query, filter: filter, limit: count + 1)
+        hasMore = page.count > count
+        entries = Array(page.prefix(count))
         if !entries.contains(where: { $0.id == selectedID }) { selectedID = entries.first?.id }
+        else { refreshInspector() }
+    }
+
+    private func refreshInspector() {
+        inspectorEntry = isPresented ? selectedID.flatMap { store.entry(id: $0, textLimit: Self.textPreviewLimit) } : nil
+    }
+
+    func loadNextPage(ifLast id: UUID? = nil) {
+        guard isPresented, hasMore, let last = entries.last,
+              id == nil || last.id == id else { return }
+        // Do not append results from the old search while the debounce is pending.
+        guard loadedQuery == query, loadedFilter == filter else { return }
+        let page = store.entries(query: query, filter: filter, after: last, limit: Self.pageSize + 1)
+        hasMore = page.count > Self.pageSize
+        entries.append(contentsOf: page.prefix(Self.pageSize))
+    }
+
+    func dismiss() {
+        isPresented = false
+        searchTask?.cancel()
+        searchTask = nil
+        isEditingInspector = false
+        selectedID = nil
+        entries.removeAll(keepingCapacity: false)
+        hasMore = false
+        previewCache.removeAll()
     }
 
     func noteHistoryChanged() {
@@ -64,24 +100,17 @@ final class HistoryModel: ObservableObject {
 
     func thumbnail(for entry: ClipboardEntry) -> NSImage? {
         guard let path = entry.thumbnailPath ?? entry.imagePath else { return nil }
-        let key = path as NSString
-        if let image = thumbnailCache.object(forKey: key) { return image }
-        guard let image = NSImage(contentsOf: store.imageURL(path)) else { return nil }
-        thumbnailCache.setObject(image, forKey: key)
-        return image
+        return previewCache.image(at: store.imageURL(path), maxPixelSize: 64)
     }
 
     func image(for entry: ClipboardEntry) -> NSImage? {
         guard let path = entry.imagePath else { return nil }
-        let key = path as NSString
-        if let image = imageCache.object(forKey: key) { return image }
-        guard let image = NSImage(contentsOf: store.imageURL(path)) else { return nil }
-        imageCache.setObject(image, forKey: key)
-        return image
+        return previewCache.image(at: store.imageURL(path), maxPixelSize: 1024)
     }
 
     private func scheduleSearchReload() {
         searchTask?.cancel()
+        guard isPresented else { return }
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
             guard !Task.isCancelled else { return }
@@ -92,6 +121,7 @@ final class HistoryModel: ObservableObject {
     func moveSelection(by offset: Int) {
         guard !entries.isEmpty else { return }
         let current = selectedID.flatMap { id in entries.firstIndex { $0.id == id } } ?? 0
+        if current + offset >= entries.count { loadNextPage() }
         selectedID = entries[max(0, min(entries.count - 1, current + offset))].id
     }
 
@@ -197,6 +227,7 @@ struct HistoryView: View {
                             .contentShape(Rectangle())
                             .onTapGesture(count: 2) { model.restore(entry) }
                             .onTapGesture { model.selectedID = entry.id }
+                            .onAppear { model.loadNextPage(ifLast: entry.id) }
                             .accessibilityAddTraits(model.selectedID == entry.id ? [.isSelected] : [])
                             Divider()
                         }
@@ -209,7 +240,7 @@ struct HistoryView: View {
                 }
 
                 Divider()
-                EntryViewer(entry: model.selectedEntry, model: model)
+                EntryViewer(entry: model.inspectorEntry, model: model)
                     .id(model.selectedID)
                     .frame(width: 320)
             }
@@ -324,6 +355,12 @@ private struct EntryViewer: View {
                                         .accessibilityLabel("Colour preview")
                                 }
                                 Text(entry.text ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                                if !entry.textIsComplete {
+                                    Text(entry.kind.isEditable
+                                         ? "Preview shortened. Copy restores the full content; Edit opens the full text."
+                                         : "Preview shortened. Copy restores the full content.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                         }
                             .frame(maxHeight: .infinity)
@@ -404,33 +441,25 @@ private struct EntryViewer: View {
 private struct TextEntryEditor: View {
     let entry: ClipboardEntry
     let model: HistoryModel
-    @State private var text: String
+    @StateObject private var session = TextEditSession()
     let onFinish: () -> Void
     @State private var error = ""
-    @FocusState private var focused: Bool
-
-    init(entry: ClipboardEntry, model: HistoryModel, onFinish: @escaping () -> Void) {
-        self.entry = entry
-        self.model = model
-        self.onFinish = onFinish
-        _text = State(initialValue: entry.text ?? "")
-    }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            TextEditor(text: $text).font(.body).focused($focused).frame(maxHeight: .infinity)
+            FullTextEditor(entryID: entry.id, store: model.store, session: session)
+                .frame(maxHeight: .infinity)
             if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
             HStack {
                 Button("Cancel", action: onFinish)
                 Spacer()
                 Button("Save") {
-                    if model.updateText(text, for: entry) { onFinish() }
+                    if let text = session.textView?.string, model.updateText(text, for: entry) { onFinish() }
                     else { error = "Could not save. Check the storage limit in Settings." }
                 }
-                .disabled(text == entry.text || text.isEmpty)
+                .disabled(!session.hasChanges)
             }
         }
-        .onAppear { focused = true }
         .onExitCommand(perform: onFinish)
     }
 }

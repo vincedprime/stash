@@ -145,8 +145,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.applyRetention()
         model.query = ""
         model.selectedID = nil
-        model.reload()
         model.isPresented = true
+        model.reload()
         if panel == nil {
             let panel = HistoryPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash"
@@ -155,14 +155,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.collectionBehavior = [.transient]
             panel.delegate = self
             panel.onResignKey = { [weak self] in self?.hidePanel() }
-            panel.contentView = NSHostingView(rootView: HistoryView(model: model))
             self.panel = panel
             model.historyWindow = panel
         }
+        panel?.contentView = NSHostingView(rootView: HistoryView(model: model))
         NSApplication.shared.activate(ignoringOtherApps: true)
         panel?.center(); panel?.makeKeyAndOrderFront(nil)
     }
-    private func hidePanel() { model?.isPresented = false; panel?.orderOut(nil) }
+    private func hidePanel() {
+        guard model?.isPresented == true else { return }
+        model?.dismiss()
+        panel?.orderOut(nil)
+        // Release SwiftUI's retained row images, text layout, and editor undo state.
+        panel?.contentView = nil
+    }
     func windowDidResignKey(_ notification: Notification) { hidePanel() }
     private func showError(_ error: Error) { let alert = NSAlert(error: error); alert.runModal(); NSApplication.shared.terminate(nil) }
 }

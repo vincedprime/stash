@@ -114,6 +114,121 @@ struct RegressionChecks {
         precondition(model.selectedID != selected)
         model.isPresented = false
 
+        try checkBoundedHistory(in: folder.appendingPathComponent("paging"), defaults: defaults, pasteboard: pasteboard)
+
         print("Passed: literals, private pasteboard types, persisted edits/tags, expiry/pins/Never, legacy migration, editor keyboard routing and Edit menu.")
+    }
+
+    @MainActor
+    static func checkBoundedHistory(in folder: URL, defaults: UserDefaults, pasteboard: NSPasteboard) throws {
+        let store = try ClipboardStore(root: folder, defaults: defaults)
+        let largeText = String(repeating: "🦊 sample text\n", count: 100_000) + "unique-tail-token"
+        precondition(store.saveText(largeText, sourceApp: "Fixture") == .saved)
+        let summary = store.entries().first!
+        precondition(!summary.textIsComplete && summary.text!.unicodeScalars.count <= 360)
+        precondition(store.entries(query: "unique-tail-token").first?.id == summary.id,
+                     "Search must match text beyond the excerpt")
+        let detail = store.entry(id: summary.id, textLimit: HistoryModel.textPreviewLimit)!
+        precondition(!detail.textIsComplete && detail.text!.unicodeScalars.count == HistoryModel.textPreviewLimit)
+        store.restore(summary, to: pasteboard)
+        precondition(pasteboard.string(forType: .string) == largeText, "Restore must never copy an excerpt")
+        let fullEntry = store.entry(id: summary.id)!
+        precondition(fullEntry.textIsComplete && fullEntry.text == largeText)
+
+        // Exercise the actual native editor: it must start with the original,
+        // preserve its tail, and avoid publishing a whole string per keystroke.
+        let session = TextEditSession()
+        let editor = NSHostingView(rootView: FullTextEditor(entryID: summary.id, store: store, session: session))
+        editor.frame = NSRect(x: 0, y: 0, width: 300, height: 240)
+        editor.layoutSubtreeIfNeeded()
+        let textView = session.textView!
+        precondition(textView.bounds.width > 0 && textView.bounds.height > 0, "The native editor must have a visible text area")
+        precondition(textView.string == largeText)
+        let end = NSRange(location: textView.textStorage!.length, length: 0)
+        precondition(textView.shouldChangeText(in: end, replacementString: " edited"))
+        textView.textStorage?.replaceCharacters(in: end, with: " edited")
+        textView.didChangeText()
+        precondition(session.hasChanges)
+        precondition(store.updateText(textView.string, for: summary))
+        store.restore(summary, to: pasteboard)
+        precondition(pasteboard.string(forType: .string) == largeText + " edited")
+
+        // Identical timestamps and a pinned group straddling a page boundary.
+        var db: OpaquePointer?
+        precondition(sqlite3_open(folder.appendingPathComponent("history.sqlite").path, &db) == SQLITE_OK)
+        var inserts = "BEGIN;"
+        for index in 0..<205 {
+            inserts += "INSERT INTO entries(id,created_at,kind,text,byte_count,pinned) VALUES('\(UUID())',1,'text','row \(index)',\("row \(index)".utf8.count),\(index < 105 ? 1 : 0));"
+        }
+        inserts += "COMMIT;"
+        precondition(sqlite3_exec(db, inserts, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        let pagingStore = try ClipboardStore(root: folder, defaults: defaults)
+        let model = HistoryModel(store: pagingStore, defaults: defaults)
+        model.isPresented = true
+        model.reload()
+        precondition(model.entries.count == 100 && model.hasMore)
+        let firstPage = model.entries.map(\.id)
+        model.selectedID = model.entries.last!.id
+        model.moveSelection(by: 1)
+        precondition(model.entries.count == 200 && model.selectedID == model.entries[100].id)
+        model.loadNextPage()
+        precondition(model.entries.count == 206 && !model.hasMore)
+        precondition(Set(model.entries.map(\.id)).count == 206, "Pages must have no duplicates or omissions")
+        precondition(Array(model.entries.prefix(100).map(\.id)) == firstPage)
+        precondition(model.entries.prefix(105).allSatisfy(\.isPinned))
+        precondition(model.entries.dropFirst(105).allSatisfy { !$0.isPinned })
+        model.selectedID = model.entries[150].id
+        model.deleteSelection()
+        precondition(model.entries.count == 205 && model.selectedID == model.entries[150].id)
+        model.query = "unique-tail-token"
+        model.reload()
+        precondition(model.entries.count == 1 && model.selectedID == summary.id && !model.hasMore)
+        precondition(model.inspectorEntry?.textIsComplete == false)
+        model.filter = .image
+        precondition(model.entries.isEmpty && model.inspectorEntry == nil)
+
+        // Synthetic 4096×2048 image; no real clipboard images are inspected.
+        let context = CGContext(data: nil, width: 4096, height: 2048, bitsPerComponent: 8,
+                                bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(NSColor.systemRed.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 4096, height: 2048))
+        let pixels = context.makeImage()!
+        let png = NSBitmapImageRep(cgImage: pixels).representation(using: .png, properties: [:])!
+        precondition(pagingStore.saveImage(ImageCapture(pngData: png, thumbnailData: png,
+            metadata: ImageMetadata(pixelWidth: 4096, pixelHeight: 2048, imageFormat: "PNG")), sourceApp: "Fixture") == .saved)
+        let imageEntry = pagingStore.entries(filter: .image).first!
+        pagingStore.restore(imageEntry, to: pasteboard)
+        let restoredImage = NSImage(pasteboard: pasteboard)!
+        var imageRect = NSRect(origin: .zero, size: restoredImage.size)
+        let restoredPixels = restoredImage.cgImage(forProposedRect: &imageRect, context: nil, hints: nil)!
+        precondition(restoredPixels.width == 4096 && restoredPixels.height == 2048,
+                     "Image restore must preserve the original resolution")
+        let tinyCache = PreviewImageCache(byteLimit: 12 * 1024)
+        for index in 0..<6 {
+            let url = folder.appendingPathComponent("fixture-\(index).png")
+            try png.write(to: url)
+            let preview = model.previewCache.image(at: url, maxPixelSize: 1024)!
+            precondition(preview.size == NSSize(width: 1024, height: 512))
+            precondition(model.previewCache.byteUsage <= model.previewCache.byteLimit)
+            let thumbnail = tinyCache.image(at: url, maxPixelSize: 64)!
+            precondition(thumbnail.size == NSSize(width: 64, height: 32))
+            precondition(tinyCache.byteUsage > 0 && tinyCache.byteUsage <= tinyCache.byteLimit)
+        }
+        precondition(model.previewCache.byteUsage > 0)
+        model.query = "pending search"
+        model.dismiss()
+        precondition(model.entries.isEmpty && model.selectedID == nil && model.inspectorEntry == nil)
+        precondition(model.previewCache.byteUsage == 0 && !model.hasMore)
+        model.noteHistoryChanged()
+        model.reload()
+        precondition(model.entries.isEmpty, "Hidden panels must not reload history")
+        model.query = ""
+        model.filter = .all
+        model.isPresented = true
+        model.reload()
+        precondition(model.entries.count == 100 && model.selectedID == model.entries.first?.id)
+        print("Passed: bounded Unicode excerpts, full-content search/restore/native editing, tied-date pagination, arrow boundary/deletion, image downsampling/cache budgets, hidden-state release and reopen.")
     }
 }

@@ -86,6 +86,14 @@ This copies Stash to Applications, clears macOS’s download quarantine for this
 - Auto-delete defaults to **Never**. Options are one hour, one day, or one week since the entry's most recent copy. Cleanup runs at launch, when history opens, and roughly once a minute while Stash runs, including when recording is paused. Sleep/quit delays cleanup until Stash resumes. Pinned items are excluded.
 - Saving a shorter retention duration or lower storage limit can remove eligible unpinned entries immediately. **Clear All** also removes pinned entries; **Delete recent** preserves them.
 
+## Keeping Stash lightweight
+
+- History opens with 100 entries and loads another batch when you scroll or navigate past the loaded rows. Each list entry contains at most 360 characters of text; search still matches the entire stored content and tags.
+- The inspector shows up to 16,000 characters. A notice identifies shortened previews. Restoring an entry always copies its full stored content. **Edit** loads the full text on demand into a native editor, with layout limited to needed regions and no full-text SwiftUI update on each keystroke.
+- Image thumbnails are downsampled to at most 64 pixels on their longest side; inspector previews use at most 1,024 pixels. This also applies to older images without saved thumbnails. The cache retains at most 8 MiB of decoded pixels and 128 images. This is a cache limit, not a limit on the app's total memory. Restoring an image uses its original stored resolution.
+- Closing history clears loaded entries, previews, pending searches, and editor state. Clipboard capture and automatic cleanup continue while the panel is closed.
+- Large image capture, full-text searches, and explicitly opening a very large item for editing can still require more processing or memory. These changes do not add background content analysis or network activity.
+
 ## Uninstall
 
 Quit Stash, disable its optional launch agent, and remove both the downloaded and locally built app locations:
@@ -112,7 +120,7 @@ Build the project without installing the app:
 swift build
 ```
 
-Some managed Macs do not include XCTest or Swift Testing. An SDK-only regression runner checks classification, private-pasteboard capture, persisted edits/tags, retention, and migration against temporary data:
+Some managed Macs do not include XCTest or Swift Testing. An SDK-only regression runner uses temporary data and a private pasteboard. It checks classification, persisted edits/tags, retention, migration, paginated navigation, full-content restore/editing behind shortened previews, image cache limits, and closing/reopening history:
 
 ```sh
 zsh scripts/check-regressions.sh
