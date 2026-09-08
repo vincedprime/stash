@@ -342,6 +342,8 @@ private struct EntryViewer: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if entry.kind == .file {
+                        FileEntryPreview(entry: entry)
                     } else if editing {
                         TextEntryEditor(entry: entry, model: model) { editing = false }
                             .id(entry.id)

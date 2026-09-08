@@ -12,6 +12,7 @@ final class ClipboardStore {
     private let images: URL
     private let defaults: UserDefaults
     private var cachedByteUsage = 0
+    private var restoredPasteboard: (name: NSPasteboard.Name, changeCount: Int)?
     private(set) var maximumBytes: Int
 
     init(root: URL? = nil, defaults: UserDefaults = .standard) throws {
@@ -115,6 +116,10 @@ final class ClipboardStore {
     func saveFiles(_ urls: [URL], sourceApp: String?) -> SaveResult {
         let paths = urls.map(\.path).joined(separator: "\n")
         guard !paths.isEmpty else { return .duplicate }
+        if let last = newestEntry(), last.kind == .file, last.text == paths {
+            refreshDuplicate(last, sourceApp: sourceApp, imageMetadata: nil)
+            return .saved
+        }
         return insert(kind: .file, text: paths, imageData: nil, sourceApp: sourceApp, imageMetadata: nil)
     }
 
@@ -202,18 +207,25 @@ final class ClipboardStore {
     func restore(_ summary: ClipboardEntry, to pasteboard: NSPasteboard = .general) {
         guard let entry = entry(id: summary.id) else { return }
         pasteboard.clearContents()
+        let written: Bool
         switch entry.kind {
-        case .text, .color: pasteboard.setString(entry.text ?? "", forType: .string)
+        case .text, .color: written = pasteboard.setString(entry.text ?? "", forType: .string)
         case .link:
-            pasteboard.setString(entry.text ?? "", forType: .string)
-            pasteboard.setString((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines), forType: .URL)
+            let textWritten = pasteboard.setString(entry.text ?? "", forType: .string)
+            let urlWritten = pasteboard.setString((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines), forType: .URL)
+            written = textWritten && urlWritten
         case .file:
             let urls = (entry.text ?? "").split(separator: "\n").map { URL(fileURLWithPath: String($0)) }
-            pasteboard.writeObjects(urls as [NSURL])
+            written = pasteboard.writeObjects(urls as [NSURL])
         case .image:
             guard let path = entry.imagePath, let image = NSImage(contentsOf: root.appendingPathComponent(path)) else { return }
-            pasteboard.writeObjects([image])
+            written = pasteboard.writeObjects([image])
         }
+        if written { restoredPasteboard = (pasteboard.name, pasteboard.changeCount) }
+    }
+
+    func isRestoredPasteboard(_ pasteboard: NSPasteboard) -> Bool {
+        restoredPasteboard?.name == pasteboard.name && restoredPasteboard?.changeCount == pasteboard.changeCount
     }
 
     func imageURL(_ path: String) -> URL { root.appendingPathComponent(path) }

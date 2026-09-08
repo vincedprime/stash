@@ -26,6 +26,8 @@ final class ClipboardMonitor {
     }
 
     func capture(from pasteboard: NSPasteboard, sourceApp: String?) -> SaveResult? {
+        // Ignore only our exact write. A later copy from any app has a new count.
+        guard !store.isRestoredPasteboard(pasteboard) else { return nil }
         let result: SaveResult
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             result = store.saveFiles(urls, sourceApp: sourceApp)

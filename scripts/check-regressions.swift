@@ -115,8 +115,67 @@ struct RegressionChecks {
         model.isPresented = false
 
         try checkBoundedHistory(in: folder.appendingPathComponent("paging"), defaults: defaults, pasteboard: pasteboard)
+        try checkFiles(in: folder.appendingPathComponent("files"), defaults: defaults)
 
         print("Passed: literals, private pasteboard types, persisted edits/tags, expiry/pins/Never, legacy migration, editor keyboard routing and Edit menu.")
+    }
+
+    @MainActor
+    static func checkFiles(in folder: URL, defaults: UserDefaults) throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let files = [folder.appendingPathComponent("Example code.swift"), folder.appendingPathComponent("Other.txt")]
+        let code = "func hello() {\n\tprint(\"Hello 🦊\")\n}\n"
+        try code.write(to: files[0], atomically: true, encoding: .utf8)
+        try "Other contents".write(to: files[1], atomically: true, encoding: .utf8)
+        let store = try ClipboardStore(root: folder.appendingPathComponent("history"), defaults: defaults)
+        let monitor = ClipboardMonitor(store: store)
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        precondition(board.writeObjects(files as [NSURL]))
+        precondition(monitor.capture(from: board, sourceApp: "Fixture") == .saved)
+        let original = store.entries().first!
+        for _ in 0..<3 {
+            store.restore(original, to: board)
+            precondition(monitor.capture(from: board, sourceApp: "Stash") == nil)
+            precondition(store.entries().count == 1 && store.entries().first?.copyCount == 1)
+            for _ in 0..<2 {
+                let restored = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as! [URL]
+                precondition(restored == files, "Repeated pastes must retain both file references")
+                let data = try String(contentsOf: restored[0], encoding: .utf8)
+                precondition(data == code)
+            }
+        }
+        // A genuine new clipboard write must not be suppressed as our restore.
+        board.clearContents()
+        precondition(board.writeObjects(files as [NSURL]))
+        precondition(monitor.capture(from: board, sourceApp: "Fixture") == .saved)
+        precondition(store.entries().count == 1 && store.entries().first?.copyCount == 2)
+        _ = store.saveText("Another item", sourceApp: "Fixture")
+        store.restore(original, to: board)
+        precondition(monitor.capture(from: board, sourceApp: "Stash") == nil)
+        precondition(store.entries().count == 2, "Restoring an older file must not create a new row")
+        board.clearContents()
+        board.setString("A new external copy", forType: .string)
+        precondition(monitor.capture(from: board, sourceApp: "Fixture") == .saved)
+        precondition(store.entries().first?.text == "A new external copy")
+
+        let preview = FilePreview.load(path: files[0].path)
+        precondition(preview.text == code, "Code previews must preserve indentation and Unicode")
+        let bigCode = String(repeating: "a", count: FilePreview.byteLimit - 1) + "🦊" + String(repeating: "z", count: 200_000)
+        try bigCode.write(to: files[0], atomically: true, encoding: .utf8)
+        let bounded = FilePreview.load(path: files[0].path)
+        precondition(bounded.text?.utf8.count == FilePreview.byteLimit - 1)
+        precondition(bounded.notice.contains("truncated"))
+        try Data([0, 1, 2, 0xFF]).write(to: files[0])
+        precondition(FilePreview.load(path: files[0].path).text == nil)
+        try "Changed contents".write(to: files[0], atomically: true, encoding: .utf8)
+        precondition(FilePreview.load(path: files[0].path).text == "Changed contents")
+        precondition(FilePreview.load(path: folder.path).text == nil)
+        precondition(FilePreview.load(path: folder.appendingPathComponent("missing.swift").path).text == nil)
+        let binary = folder.appendingPathComponent("binary.bin")
+        try Data([0, 1, 2]).write(to: binary)
+        precondition(FilePreview.load(path: binary.path).text == nil)
+        print("Passed: repeat file restore/paste, self-capture suppression, genuine file recopy deduplication, bounded code previews, Unicode boundaries, binary/directory/missing files, and current file contents.")
     }
 
     @MainActor
