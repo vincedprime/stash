@@ -1,126 +1,96 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Stash is a private, local-only clipboard manager for macOS.">
-    <title>Stash — Local Clipboard History for macOS</title>
-    <style>
-      :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; }
-      * { box-sizing: border-box; }
-      body { margin: 0; color: #f4f0f7; background: #17131b; }
-      main { width: min(1040px, calc(100% - 48px)); margin: 0 auto; }
-      header { display: flex; align-items: center; justify-content: space-between; padding: 26px 0; }
-      .brand { font-size: 21px; font-weight: 750; letter-spacing: -.03em; }
-      a { color: inherit; }
-      .source { color: #c9c2cd; font-size: 14px; text-decoration: none; }
-      .source:focus-visible, .download:focus-visible, .copy:focus-visible { outline: 3px solid #8ab8ff; outline-offset: 3px; }
-      .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, .82fr); align-items: center; gap: 64px; padding: 82px 0 72px; }
-      h1 { margin: 0; font-size: clamp(44px, 6vw, 72px); line-height: .97; letter-spacing: -.065em; }
-      .lead { max-width: 600px; margin: 26px 0 30px; color: #c9c2cd; font-size: 20px; line-height: 1.45; }
-      .download { display: inline-flex; align-items: center; padding: 15px 20px; border-radius: 12px; color: #fff; background: #1877f2; box-shadow: 0 8px 28px #1877f244; font-weight: 700; text-decoration: none; transition: transform 160ms cubic-bezier(.23,1,.32,1), filter 160ms ease; }
-      .download:active, .copy:active { transform: scale(.97); }
-      .release { margin: 12px 0 0; color: #938b99; font-size: 13px; }
-      .warning { display: flex; gap: 10px; max-width: 530px; margin-top: 22px; padding: 11px 13px; border: 1px solid #44394a; border-radius: 10px; color: #b9b0bd; background: #1e1821; font-size: 13px; line-height: 1.4; }
-      .warning strong { color: #e6dce8; }
-      .preview { overflow: hidden; border: 1px solid #403746; border-radius: 18px; background: #201a24; box-shadow: 0 24px 64px #0006; }
-      .preview-bar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-bottom: 1px solid #39303e; color: #aea6b2; font-size: 11px; }
-      .dots { display: flex; gap: 5px; } .dots i { width: 8px; height: 8px; border-radius: 50%; background: #615965; } .dots i:first-child { background: #f05f57; }
-      .preview-title { margin: 0 auto; transform: translateX(16px); }
-      .preview-search { margin: 12px; padding: 9px 10px; border: 2px solid #2379c5; border-radius: 8px; color: #a79fab; font-size: 12px; }
-      .preview-body { display: grid; grid-template-columns: 1fr 132px; min-height: 220px; border-top: 1px solid #39303e; }
-      .preview-list { padding: 7px; }
-      .preview-row { display: flex; align-items: center; height: 34px; padding: 0 8px; border-radius: 5px; color: #cfc8d3; font-size: 11px; }
-      .preview-row.selected { background: #1768cf; color: #fff; } .preview-row span { margin-left: auto; color: #98909d; } .preview-row.selected span { color: #d8e8ff; }
-      .preview-detail { padding: 14px; border-left: 1px solid #39303e; } .preview-detail h3 { margin: 0 0 10px; font-size: 13px; } .preview-detail p { margin: 7px 0; color: #958c99; font-size: 10px; line-height: 1.35; }
-      section { border-top: 1px solid #352e3a; padding: 52px 0; }
-      h2 { margin: 0 0 22px; font-size: 27px; letter-spacing: -.035em; }
-      .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-      .feature { padding: 17px; border: 1px solid #302934; border-radius: 13px; background: #1d1820; }
-      .feature h3 { margin: 0 0 7px; font-size: 16px; } .feature p, li { color: #c9c2cd; line-height: 1.5; } .feature p { margin: 0; font-size: 14px; }
-      ol { margin: 0; padding-left: 22px; } li + li { margin-top: 10px; }
-      .command { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px; padding: 8px; border: 1px solid #403746; border-radius: 11px; background: #1d1820; }
-      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } .command code { flex: 1; overflow-x: auto; padding: 7px; color: #ddd5e0; font-size: 12px; white-space: nowrap; }
-      .copy { flex: none; padding: 8px 10px; border: 0; border-radius: 7px; color: #f7f4f8; background: #36303a; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; transition: transform 160ms cubic-bezier(.23,1,.32,1), background-color 160ms ease; }
-      .note { color: #938b99; font-size: 13px; line-height: 1.45; }
-      footer { padding: 30px 0 46px; color: #938b99; font-size: 13px; }
-      @media (hover: hover) and (pointer: fine) { .source:hover { color: #fff; } .download:hover { filter: brightness(1.1); } .copy:hover { background: #4a414e; } }
-      @media (max-width: 760px) { main { width: min(100% - 48px, 600px); } .hero { grid-template-columns: 1fr; gap: 42px; padding: 68px 0 58px; } .preview { max-width: 460px; } .features { grid-template-columns: 1fr; } }
-      @media (max-width: 460px) { main { width: calc(100% - 40px); } header { padding: 22px 0; } .source { font-size: 12px; } .lead { font-size: 18px; } .command { align-items: flex-start; } .copy { margin-top: 1px; } }
-      @media (prefers-reduced-motion: reduce) { .download, .copy { transition: none; } }
-    </style>
-  </head>
-  <body>
-    <main>
-      <header>
-        <div class="brand">Stash</div>
-        <a class="source" href="https://github.com/vincedprime/stash">GitHub ↗</a>
-      </header>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Stash keeps your Mac’s clipboard history locally. Search text, images, links, colours, and files, then bring them back with a keystroke.">
+  <meta name="theme-color" content="#faf9f6">
+  <title>Stash — Your clipboard, kept locally</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="site.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header wrap">
+    <a class="brand" href="./" aria-label="Stash home"><img src="assets/icon.svg" width="25" height="25" alt="">Stash</a>
+    <nav aria-label="Main navigation">
+      <a href="https://github.com/vincedprime/stash#readme">Guide</a>
+      <a href="https://github.com/vincedprime/stash">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+  <main id="main" class="wrap">
+    <section class="hero" aria-labelledby="title">
+      <h1 id="title">Your clipboard,<br>kept locally.</h1>
+      <p>Text, images, links, colours, and files.<br>Find what you copied. Pick up where you left off.</p>
+      <a class="download" href="https://github.com/vincedprime/stash/releases/latest/download/Stash.dmg">Download for Mac <span aria-hidden="true">↓</span></a>
+      <p class="requirements">Apple Silicon · macOS 15+<br>Unsigned build · <a href="#install">Installation steps</a></p>
+    </section>
 
-      <div class="hero">
-        <div>
-          <h1>Your clipboard,<br>kept locally.</h1>
-          <p class="lead">A fast clipboard manager. Keyboard shortcut first.</p>
-          <a class="download" href="https://github.com/vincedprime/stash/releases/latest/download/Stash.dmg">Download for </a>
-          <p class="release">macOS 15 or later · Apple Silicon</p>
-          <div class="warning"><span>ⓘ</span><span><strong>Unsigned build.</strong> Install it with the one Terminal command below after downloading. As this was something I wanted so it doesn't make sense to pay apple $99/year for my own utitlity which nobody else gonna use.</span></div>
-        </div>
-        <div class="preview" aria-label="Preview of the Stash clipboard history panel">
-          <div class="preview-bar"><span class="dots"><i></i><i></i><i></i></span><span class="preview-title">Stash</span></div>
-          <div class="preview-search">Search clipboard</div>
-          <div class="preview-body">
-            <div class="preview-list">
-              <div class="preview-row selected">Design notes for Stash <span>⌘</span></div>
-              <div class="preview-row">https://github.com/vincedprime/stash <span>⌘</span></div>
-              <div class="preview-row">Selected dates (7) <span>⌘</span></div>
-              <div class="preview-row">Image <span>⌘</span></div>
-              <div class="preview-row">Public holidays <span>⌘</span></div>
-            </div>
-            <div class="preview-detail"><h3>Text</h3><p>Copied<br>Today at 17:30</p><p>From<br>Browser</p><p>24 characters · Once</p></div>
-          </div>
-        </div>
+    <section class="showcase" aria-label="Explore Stash features">
+      <div class="view-tabs" aria-label="Feature screenshots" hidden>
+        <button id="tab-history" type="button" data-panel="history">History</button>
+        <button id="tab-images" type="button" data-panel="images">Images</button>
+        <button id="tab-code" type="button" data-panel="code">Code</button>
+        <button id="tab-settings" type="button" data-panel="settings">Settings</button>
       </div>
+      <figure id="history" class="feature-view">
+        <a class="image-stage" href="assets/history.png" target="_blank" rel="noopener" aria-label="Open full-size history screenshot in a new tab">
+          <img src="assets/history.png" width="1480" height="1080" fetchpriority="high" alt="Stash history with compact rows, a pinned weekend note, its text preview, tags, metadata, and keyboard shortcuts.">
+        </a>
+        <figcaption><h2>Find it. Copy it. Carry on.</h2><p>Open with <kbd>⌥ Space</kbd>, search, and press <kbd>Return</kbd> to copy. <br>Pin the keepers. Add tags. Edit saved text.</p></figcaption>
+      </figure>
+      <figure id="images" class="feature-view">
+        <a class="image-stage" href="assets/images.png" target="_blank" rel="noopener" aria-label="Open full-size image preview screenshot in a new tab">
+          <img src="assets/images.png" width="1480" height="1080" loading="lazy" decoding="async" alt="A selected image in Stash, with a large preview of a landscape illustration and its dimensions, aspect ratio, and received format.">
+        </a>
+        <figcaption><h2>See what you’re about to paste.</h2><p>Browse image thumbnails and preview the selected image. <br>Its dimensions and format sit just below.</p></figcaption>
+      </figure>
+      <figure id="code" class="feature-view">
+        <a class="image-stage" href="assets/code.png" target="_blank" rel="noopener" aria-label="Open full-size code preview screenshot in a new tab">
+          <img src="assets/code.png" width="1480" height="1080" loading="lazy" decoding="async" alt="A copied hello.swift file in Stash with its current Swift source displayed in a monospaced, read-only preview.">
+        </a>
+        <figcaption><h2>A look inside your copied files.</h2><p>Preview supported text and code files, with indentation intact. <br>Restore the file itself when you’re ready to paste.</p></figcaption>
+      </figure>
+      <figure id="settings" class="feature-view">
+        <a class="image-stage settings-stage" href="assets/settings.png" target="_blank" rel="noopener" aria-label="Open full-size settings screenshot in a new tab">
+          <img src="assets/settings.png" width="920" height="1240" loading="lazy" decoding="async" alt="Stash settings showing storage limit, auto-delete, and configurable shortcuts for opening history, recording, pinning, deleting, and filtering.">
+        </a>
+        <figcaption><h2>Keep just enough.</h2><p>Set your storage limit, choose when history expires, <br>and make the shortcuts your own. Pinned items stay.</p></figcaption>
+      </figure>
+      <p class="sample-note">Native app views with sample content. Select an image to see it full size.</p>
+    </section>
 
-      <section>
-        <h2>Built for retrieval, not surveillance.</h2>
-        <div class="features">
-          <div class="feature"><h3>Private by default</h3><p>Everything stay in your local. No data is sent anywhere.</p></div>
-          <div class="feature"><h3>Keyboard-first</h3><p>Search, navigate, restore, pin, delete, and filter clipboard history without leaving your current task.</p></div>
-          <div class="feature"><h3>Useful context</h3><p>See source app, copied time, size, copy count, and full text or image details.</p></div>
+    <p class="privacy">No account. No cloud sync. No Accessibility permission.</p>
+
+    <section class="setup" aria-label="Setup and removal">
+      <details id="install">
+        <summary>Install Stash</summary>
+        <div class="details-body">
+          <p>Download and open <strong>Stash.dmg</strong>, then run this in Terminal:</p>
+          <div class="command"><pre><code id="install-command">cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code></pre><button class="copy" type="button" data-target="install-command" aria-label="Copy installation command" hidden>Copy</button></div>
+          <p>This unsigned build requires removing its download quarantine. If your managed Mac blocks installation, ask your administrator to allow it.</p>
+          <p>Open history with <kbd>⌥ Space</kbd>, or choose <strong>Show Stash</strong> from the menu-bar icon. After restoring an item, paste with <kbd>⌘ V</kbd>.</p>
+          <p>Stash can record sensitive clipboard content. Pause recording whenever you need to.</p>
+          <a href="https://github.com/vincedprime/stash#readme">Build from source, launch at login, and full guide ↗</a>
         </div>
-      </section>
-
-      <section>
-        <h2>Install</h2>
-        <ol>
-          <li>Download and open <strong>Stash.dmg</strong>.</li>
-          <li>Open <strong>Terminal</strong>, then copy and run this command:</li>
-        </ol>
-        <div class="command"><code id="install-command">cp -R "/Volumes/Stash/Stash.app" "/Applications/" &amp;&amp; xattr -dr com.apple.quarantine "/Applications/Stash.app" &amp;&amp; open "/Applications/Stash.app"</code><button class="copy" type="button" data-target="install-command" aria-describedby="install-note">Copy</button></div>
-        <p id="install-note" class="note">This copies Stash to Applications, removes the download quarantine for this unsigned build, and opens it. A managed Mac may require administrator approval.</p>
-        <p>Then click the Stash menu-bar icon or press <code>⌥Space</code> to search clipboard history.</p>
-        <p>If your laptop doesn't have accessibity issue which is the main reason I made this tool, then copy it to some otther folder instead of /Applications</p>
-      </section>
-
-      <section>
-        <h2>Uninstall</h2>
-        <p>Quit Stash and remove the app and its optional launch-at-login entry:</p>
-        <div class="command"><code id="uninstall-command">pkill -x Stash 2&gt;/dev/null || true; launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist" 2&gt;/dev/null || true; rm -f "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist"; rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"</code><button class="copy" type="button" data-target="uninstall-command" aria-describedby="uninstall-note">Copy</button></div>
-        <p id="uninstall-note" class="note">Clipboard history remains available if you reinstall. To permanently erase all history and settings too, run:</p>
-        <div class="command"><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"; defaults delete com.vinylstack.stash 2&gt;/dev/null || true</code><button class="copy" type="button" data-target="erase-command">Copy</button></div>
-      </section>
-
-      <footer>I made it becuase I company flagged Raycast and removed it.</footer>
-    </main>
-    <script>
-      document.querySelectorAll('.copy').forEach((copyButton) => {
-        copyButton.addEventListener('click', async () => {
-          const command = document.querySelector(`#${copyButton.dataset.target}`).textContent;
-          await navigator.clipboard.writeText(command);
-          copyButton.textContent = 'Copied';
-          window.setTimeout(() => { copyButton.textContent = 'Copy'; }, 1600);
-        });
-      });
-    </script>
-  </body>
+      </details>
+      <details id="uninstall">
+        <summary>Uninstall Stash</summary>
+        <div class="details-body">
+          <p>Quit Stash, remove its login entry, and delete the app:</p>
+          <div class="command"><pre><code id="uninstall-command">pkill -x Stash 2&gt;/dev/null || true
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist" 2&gt;/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/com.vinylstack.stash.login-item.plist"
+rm -rf "/Applications/Stash.app" "$HOME/Applications/Stash.app"</code></pre><button class="copy" type="button" data-target="uninstall-command" aria-label="Copy uninstall command" hidden>Copy</button></div>
+          <p>Your history stays available if you reinstall. To permanently erase history and settings too:</p>
+          <div class="command"><pre><code id="erase-command">rm -rf "$HOME/Library/Application Support/Stash"
+defaults delete com.vinylstack.stash 2&gt;/dev/null || true</code></pre><button class="copy" type="button" data-target="erase-command" aria-label="Copy history removal command" hidden>Copy</button></div>
+        </div>
+      </details>
+      <p id="copy-status" class="copy-status" role="status"></p>
+    </section>
+  </main>
+  <footer class="site-footer wrap"><span>A small utility for your Mac.</span><a href="https://github.com/vincedprime/stash/releases">Release notes ↗</a></footer>
+</body>
 </html>
