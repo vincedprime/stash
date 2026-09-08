@@ -3,6 +3,9 @@ name: Publish release
 on:
   push:
     branches: [main]
+    # Skip Markdown-only edits. Landing-page code, images, and app changes run.
+    paths-ignore:
+      - '**/*.md'
 
 permissions:
   contents: write
