@@ -220,20 +220,14 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             toolbar
 
-            HSplitView {
+            HStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView {
                       LazyVStack(spacing: 0) {
                         ForEach(model.entries) { entry in
                             HStack(spacing: 10) {
                                 if entry.kind == .image, let image = model.thumbnail(for: entry) {
-                                    Image(nsImage: image)
-                                        .resizable().scaledToFit()
-                                        .padding(3)
-                                        .frame(width: 30, height: 28)
-                                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 4))
-                                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
-                                        .accessibilityHidden(true)
+                                    Image(nsImage: image).resizable().scaledToFit().frame(width: 28, height: 28)
                                 }
                                 Text(entry.preview.isEmpty ? "Empty text" : entry.preview)
                                     .lineLimit(1)
@@ -264,8 +258,7 @@ struct HistoryView: View {
                       .padding(.horizontal, 8)
                       .padding(.vertical, 6)
                     }
-                    .frame(minWidth: 280, idealWidth: 380, maxWidth: .infinity)
-                    .background(Color(nsColor: .textBackgroundColor))
+                    .frame(width: 420)
                     .overlay {
                         if model.entries.isEmpty {
                             VStack(spacing: 8) {
@@ -283,14 +276,16 @@ struct HistoryView: View {
                     }
                 }
 
+                Divider()
                 EntryViewer(entry: model.inspectorEntry, model: model)
                     .id(model.selectedID)
-                    .frame(minWidth: 300, idealWidth: 360, maxWidth: .infinity)
+                    .frame(width: 319)
                     .background(Color(nsColor: .textBackgroundColor))
             }
 
             Divider()
             statusBar
+            Divider()
             ScrollView(.horizontal) {
              HStack(spacing: 14) {
                 Text("Shortcuts")
@@ -302,14 +297,14 @@ struct HistoryView: View {
              }
             }
             .scrollIndicators(.hidden)
-            .frame(height: 14)
-            .font(.caption2)
+            .frame(height: 16)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
         }
-        .frame(minWidth: 680, minHeight: 420)
+        .frame(width: 740, height: 540)
         .background(StashPanelBackground())
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
@@ -362,26 +357,21 @@ struct HistoryView: View {
             .frame(width: 320)
         }
         .controlSize(.regular)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(10)
+        .modifier(StashToolbarSurface())
+        .padding(12)
     }
 
     private var statusBar: some View {
         HStack {
             Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .binary)) / \(ByteCountFormatter.string(fromByteCount: Int64(model.storageLimit), countStyle: .binary))")
-            Menu("History") {
-                Menu("Delete recent") {
-                    Button("Last 5 minutes") { model.deleteRecent(5) }
-                    Button("Last hour") { model.deleteRecent(60) }
-                    Button("Last day") { model.deleteRecent(24 * 60) }
-                }
-                Divider()
-                Button("Clear All…", role: .destructive) { model.isConfirmingClear = true }
+            Button("Clear All") { model.isConfirmingClear = true }
+                .disabled(model.usage == 0)
+            Menu("Delete recent") {
+                Button("Last 5 minutes") { model.deleteRecent(5) }
+                Button("Last hour") { model.deleteRecent(60) }
+                Button("Last day") { model.deleteRecent(24 * 60) }
             }
-            .disabled(model.usage == 0)
-            .fixedSize()
-            .help("Delete recent entries or clear history")
             Spacer()
             Button { model.onShowSettings?() } label: { Image(systemName: "gearshape") }
                 .accessibilityLabel("Settings")
@@ -418,7 +408,7 @@ private struct EntryViewer: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(14)
+                    .padding(12)
 
                     VStack(alignment: .leading, spacing: 12) {
                         if tagging {
@@ -428,6 +418,7 @@ private struct EntryViewer: View {
                                 if entry.kind.isEditable {
                                     Button("Edit") { editing = true }.disabled(editing)
                                 }
+                                Spacer()
                                 Button((entry.tags ?? "").isEmpty ? "Add tags" : "Edit tags") { tagging = true }
                                     .disabled(editing)
                             }
@@ -440,7 +431,7 @@ private struct EntryViewer: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .padding(14)
+                    .padding(12)
                     .frame(height: detailsHeight, alignment: .topLeading)
                 }
             } else {
@@ -518,7 +509,7 @@ private struct EntryViewer: View {
     private func metadataRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label).frame(width: 76, alignment: .leading)
-            Text(value).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+            Text(value).foregroundStyle(.primary)
         }
     }
 
