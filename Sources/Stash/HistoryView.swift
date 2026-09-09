@@ -220,14 +220,20 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             toolbar
 
-            HStack(spacing: 0) {
+            HSplitView {
                 ScrollViewReader { proxy in
                     ScrollView {
                       LazyVStack(spacing: 0) {
                         ForEach(model.entries) { entry in
                             HStack(spacing: 10) {
                                 if entry.kind == .image, let image = model.thumbnail(for: entry) {
-                                    Image(nsImage: image).resizable().scaledToFit().frame(width: 28, height: 28)
+                                    Image(nsImage: image)
+                                        .resizable().scaledToFit()
+                                        .padding(3)
+                                        .frame(width: 30, height: 28)
+                                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 4))
+                                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+                                        .accessibilityHidden(true)
                                 }
                                 Text(entry.preview.isEmpty ? "Empty text" : entry.preview)
                                     .lineLimit(1)
@@ -258,7 +264,7 @@ struct HistoryView: View {
                       .padding(.horizontal, 8)
                       .padding(.vertical, 6)
                     }
-                    .frame(width: 420)
+                    .frame(minWidth: 280, idealWidth: 380, maxWidth: .infinity)
                     .overlay {
                         if model.entries.isEmpty {
                             VStack(spacing: 8) {
@@ -276,16 +282,14 @@ struct HistoryView: View {
                     }
                 }
 
-                Divider()
                 EntryViewer(entry: model.inspectorEntry, model: model)
                     .id(model.selectedID)
-                    .frame(width: 319)
+                    .frame(minWidth: 300, idealWidth: 360, maxWidth: .infinity)
                     .background(Color(nsColor: .textBackgroundColor))
             }
 
             Divider()
             statusBar
-            Divider()
             ScrollView(.horizontal) {
              HStack(spacing: 14) {
                 Text("Shortcuts")
@@ -297,14 +301,14 @@ struct HistoryView: View {
              }
             }
             .scrollIndicators(.hidden)
-            .frame(height: 16)
-            .font(.caption)
+            .frame(height: 14)
+            .font(.caption2)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
             if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.orange).padding(.bottom, 8) }
         }
-        .frame(width: 740, height: 540)
+        .frame(minWidth: 680, minHeight: 420)
         .background(StashPanelBackground())
         .onAppear { searchIsFocused = true }
         .onChange(of: model.isPresented) { _, isPresented in if isPresented { searchIsFocused = true } }
@@ -357,21 +361,27 @@ struct HistoryView: View {
             .frame(width: 320)
         }
         .controlSize(.regular)
-        .padding(10)
-        .modifier(StashToolbarSurface())
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var statusBar: some View {
         HStack {
             Text("\(ByteCountFormatter.string(fromByteCount: Int64(model.usage), countStyle: .binary)) / \(ByteCountFormatter.string(fromByteCount: Int64(model.storageLimit), countStyle: .binary))")
-            Button("Clear All") { model.isConfirmingClear = true }
-                .disabled(model.usage == 0)
-            Menu("Delete recent") {
-                Button("Last 5 minutes") { model.deleteRecent(5) }
-                Button("Last hour") { model.deleteRecent(60) }
-                Button("Last day") { model.deleteRecent(24 * 60) }
+            Menu("History") {
+                Menu("Delete recent") {
+                    Button("Last 5 minutes") { model.deleteRecent(5) }
+                    Button("Last hour") { model.deleteRecent(60) }
+                    Button("Last day") { model.deleteRecent(24 * 60) }
+                }
+                Divider()
+                Button("Clear All…", role: .destructive) { model.isConfirmingClear = true }
             }
+            .disabled(model.usage == 0)
+            .fixedSize()
+            .help("Delete recent entries or clear history")
             Spacer()
             Button { model.onShowSettings?() } label: { Image(systemName: "gearshape") }
                 .accessibilityLabel("Settings")
@@ -382,7 +392,8 @@ struct HistoryView: View {
         .font(.caption)
         .controlSize(.small)
         .modifier(StashActionStyle())
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 }
 
@@ -393,67 +404,77 @@ private struct EntryViewer: View {
     @State private var tagging = false
 
     var body: some View {
-        Group {
+        GeometryReader { geometry in
             if let entry {
-                VStack(alignment: .leading, spacing: 8) {
-                    if entry.kind == .image {
-                        if let image = model.image(for: entry) {
-                            Image(nsImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .accessibilityLabel("Copied image preview")
-                        } else {
-                            ContentUnavailableView("Image unavailable", systemImage: "photo", description: Text("The saved image could not be opened."))
-                                .frame(maxHeight: .infinity)
-                        }
-                    } else if entry.kind == .file {
-                        FileEntryPreview(entry: entry)
-                    } else if editing {
+                if editing {
+                    VStack(alignment: .leading, spacing: 16) {
                         TextEntryEditor(entry: entry, model: model) { editing = false }
-                            .id(entry.id)
-                    } else {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 12) {
-                                if entry.kind == .color, let rgba = TextContent.rgba((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha))
-                                        .frame(height: 100)
-                                        .accessibilityLabel("Colour preview")
+                        Divider()
+                        metadata(for: entry)
+                    }
+                    .padding(14)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            preview(for: entry, availableHeight: geometry.size.height)
+                            if tagging {
+                                EntryTagsEditor(entry: entry, model: model) { tagging = false }
+                            } else {
+                                HStack(spacing: 8) {
+                                    if entry.kind.isEditable { Button("Edit") { editing = true } }
+                                    Button((entry.tags ?? "").isEmpty ? "Add tags" : "Edit tags") { tagging = true }
                                 }
-                                Text(entry.text ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                                if !entry.textIsComplete {
-                                    Text(entry.kind.isEditable
-                                         ? "Preview shortened. Copy restores the full content; Edit opens the full text."
-                                         : "Preview shortened. Copy restores the full content.")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
+                                .controlSize(.small)
+                                .modifier(StashActionStyle())
                             }
+                            Divider()
+                            metadata(for: entry)
                         }
-                            .frame(maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
                     }
-                    if !editing && !tagging {
-                        HStack {
-                            if entry.kind.isEditable { Button("Edit") { editing = true } }
-                            Spacer()
-                            Button((entry.tags ?? "").isEmpty ? "Add tags" : "Edit tags") { tagging = true }
-                        }
-                        .controlSize(.small)
-                        .modifier(StashActionStyle())
-                    }
-                    if tagging {
-                        EntryTagsEditor(entry: entry, model: model) { tagging = false }
-                    }
-                    Divider()
-                    metadata(for: entry)
                 }
             } else {
                 ContentUnavailableView("Clipboard item", systemImage: "doc.on.clipboard", description: Text("Select an item to see its details."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .padding(12)
         .onChange(of: editing || tagging) { _, active in model.isEditingInspector = active }
         .onDisappear { model.isEditingInspector = false }
+    }
+
+    @ViewBuilder
+    private func preview(for entry: ClipboardEntry, availableHeight: CGFloat) -> some View {
+        if entry.kind == .image {
+            if let image = model.image(for: entry) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: max(140, availableHeight * 0.55))
+                    .accessibilityLabel("Copied image preview")
+            } else {
+                ContentUnavailableView("Image unavailable", systemImage: "photo", description: Text("The saved image could not be opened."))
+            }
+        } else if entry.kind == .file {
+            FileEntryPreview(entry: entry)
+                .frame(height: max(160, availableHeight * 0.6))
+        } else {
+            if entry.kind == .color, let rgba = TextContent.rgba((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha))
+                    .frame(height: 100)
+                    .accessibilityLabel("Colour preview")
+            }
+            Text(entry.text ?? "")
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if !entry.textIsComplete {
+                Text("Preview shortened. Copy restores the full content; Edit opens the full text.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func sizeDescription(for entry: ClipboardEntry) -> String {
@@ -485,7 +506,7 @@ private struct EntryViewer: View {
     private func metadataRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label).frame(width: 76, alignment: .leading)
-            Text(value).foregroundStyle(.primary)
+            Text(value).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
