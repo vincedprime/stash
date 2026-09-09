@@ -406,33 +406,42 @@ private struct EntryViewer: View {
     var body: some View {
         GeometryReader { geometry in
             if let entry {
-                if editing {
-                    VStack(alignment: .leading, spacing: 16) {
-                        TextEntryEditor(entry: entry, model: model) { editing = false }
+                // Reserve the same detail area for every content type. Only its
+                // contents scroll; selecting another item never moves the divider.
+                let detailsHeight = min(210, geometry.size.height * 0.48)
+                VStack(alignment: .leading, spacing: 0) {
+                    Group {
+                        if editing {
+                            TextEntryEditor(entry: entry, model: model) { editing = false }
+                        } else {
+                            preview(for: entry)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(14)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        if tagging {
+                            EntryTagsEditor(entry: entry, model: model) { tagging = false }
+                        } else {
+                            HStack(spacing: 8) {
+                                if entry.kind.isEditable {
+                                    Button("Edit") { editing = true }.disabled(editing)
+                                }
+                                Button((entry.tags ?? "").isEmpty ? "Add tags" : "Edit tags") { tagging = true }
+                                    .disabled(editing)
+                            }
+                            .controlSize(.small)
+                            .modifier(StashActionStyle())
+                        }
                         Divider()
-                        metadata(for: entry)
+                        ScrollView {
+                            metadata(for: entry)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                     .padding(14)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            preview(for: entry, availableHeight: geometry.size.height)
-                            if tagging {
-                                EntryTagsEditor(entry: entry, model: model) { tagging = false }
-                            } else {
-                                HStack(spacing: 8) {
-                                    if entry.kind.isEditable { Button("Edit") { editing = true } }
-                                    Button((entry.tags ?? "").isEmpty ? "Add tags" : "Edit tags") { tagging = true }
-                                }
-                                .controlSize(.small)
-                                .modifier(StashActionStyle())
-                            }
-                            Divider()
-                            metadata(for: entry)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                    }
+                    .frame(height: detailsHeight, alignment: .topLeading)
                 }
             } else {
                 ContentUnavailableView("Clipboard item", systemImage: "doc.on.clipboard", description: Text("Select an item to see its details."))
@@ -444,35 +453,38 @@ private struct EntryViewer: View {
     }
 
     @ViewBuilder
-    private func preview(for entry: ClipboardEntry, availableHeight: CGFloat) -> some View {
+    private func preview(for entry: ClipboardEntry) -> some View {
         if entry.kind == .image {
             if let image = model.image(for: entry) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: max(140, availableHeight * 0.55))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityLabel("Copied image preview")
             } else {
                 ContentUnavailableView("Image unavailable", systemImage: "photo", description: Text("The saved image could not be opened."))
             }
         } else if entry.kind == .file {
             FileEntryPreview(entry: entry)
-                .frame(height: max(160, availableHeight * 0.6))
         } else {
-            if entry.kind == .color, let rgba = TextContent.rgba((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha))
-                    .frame(height: 100)
-                    .accessibilityLabel("Colour preview")
-            }
-            Text(entry.text ?? "")
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if entry.kind == .color, let rgba = TextContent.rgba((entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha))
+                            .frame(height: 100)
+                            .accessibilityLabel("Colour preview")
+                    }
+                    Text(entry.text ?? "")
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !entry.textIsComplete {
+                        Text("Preview shortened. Copy restores the full content; Edit opens the full text.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if !entry.textIsComplete {
-                Text("Preview shortened. Copy restores the full content; Edit opens the full text.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
