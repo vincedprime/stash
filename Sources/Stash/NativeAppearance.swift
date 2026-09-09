@@ -1,35 +1,29 @@
 import AppKit
 import SwiftUI
 
-/// Native material for window chrome; content panes provide their own background.
+/// Keep text surfaces independent of other windows. Native glass belongs on
+/// controls above this opaque, appearance-adaptive foundation.
 struct StashPanelBackground: View {
+    var body: some View {
+        Color(nsColor: .windowBackgroundColor)
+    }
+}
+
+struct StashToolbarSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    var body: some View {
-        if reduceTransparency {
-            Color(nsColor: .windowBackgroundColor)
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *), !reduceTransparency {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
         } else {
-            StashWindowMaterial()
+            content.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 }
 
-private struct StashWindowMaterial: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
-
-/// Use Tahoe's native glass controls, with standard controls on earlier macOS.
 struct StashActionStyle: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(macOS 26, *), !reduceTransparency {

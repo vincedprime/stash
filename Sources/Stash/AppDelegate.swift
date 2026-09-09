@@ -152,10 +152,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.isPresented = true
         model.reload()
         if panel == nil {
-            let panel = HistoryPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled, .closable, .utilityWindow, .resizable], backing: .buffered, defer: false)
+            let panel = HistoryPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
             panel.title = "Stash"
-            panel.contentMinSize = NSSize(width: 680, height: 420)
-            panel.backgroundColor = .windowBackgroundColor
             panel.animationBehavior = .none
             panel.titlebarAppearsTransparent = true
             panel.titlebarSeparatorStyle = .none
