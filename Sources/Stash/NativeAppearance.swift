@@ -1,17 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// Let macOS supply the material and adapt it to appearance/accessibility settings.
-struct StashPanelBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
-        return view
+/// Keep text surfaces independent of other windows. Native glass belongs on
+/// controls above this opaque, appearance-adaptive foundation.
+struct StashPanelBackground: View {
+    var body: some View {
+        Color(nsColor: .windowBackgroundColor)
     }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 struct StashToolbarSurface: ViewModifier {
