@@ -265,6 +265,7 @@ struct HistoryView: View {
                       .padding(.vertical, 6)
                     }
                     .frame(minWidth: 280, idealWidth: 380, maxWidth: .infinity)
+                    .background(Color(nsColor: .textBackgroundColor))
                     .overlay {
                         if model.entries.isEmpty {
                             VStack(spacing: 8) {
@@ -363,7 +364,6 @@ struct HistoryView: View {
         .controlSize(.regular)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) { Divider() }
     }
 
