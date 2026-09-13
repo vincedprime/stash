@@ -178,8 +178,37 @@ struct RegressionChecks {
 
         try checkBoundedHistory(in: folder.appendingPathComponent("paging"), defaults: defaults, pasteboard: pasteboard)
         try checkFiles(in: folder.appendingPathComponent("files"), defaults: defaults)
+        try checkRestoreRecency(in: folder.appendingPathComponent("restore-order"), defaults: defaults)
 
         print("Passed: literals, private pasteboard types, persisted edits/tags, expiry/pins/Never, legacy migration, editor keyboard routing and Edit menu.")
+    }
+
+    @MainActor
+    static func checkRestoreRecency(in folder: URL, defaults: UserDefaults) throws {
+        let store = try ClipboardStore(root: folder, defaults: defaults)
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        _ = store.saveText("Older item", sourceApp: "Original app")
+        let older = store.entries().first!
+        precondition(store.setTags("keep", for: older))
+        _ = store.saveText("Newer item", sourceApp: "Other app")
+        let newer = store.entries().first!
+        precondition(newer.id != older.id)
+        let usage = store.byteUsage()
+        store.restore(older, to: board)
+        precondition(board.string(forType: .string) == "Older item")
+        let restored = store.entries().first!
+        precondition(restored.id == older.id && restored.createdAt >= newer.createdAt)
+        precondition(restored.sourceApp == "Original app" && restored.tags == "keep")
+        precondition(restored.copyCount == older.copyCount)
+        precondition(store.entries().count == 2 && store.byteUsage() == usage)
+        precondition(ClipboardMonitor(store: store).capture(from: board, sourceApp: "Stash") == nil)
+        let reopened = try ClipboardStore(root: folder, defaults: defaults)
+        precondition(reopened.entries().first?.id == older.id, "Restored order must survive restart")
+        store.setPinned(newer, pinned: true)
+        store.restore(older, to: board)
+        precondition(store.entries().map(\.id) == [newer.id, older.id], "Pinned items retain priority")
+        print("Passed: restore recency, persistent order, preserved metadata, pin priority, and no duplicate capture.")
     }
 
     @MainActor
@@ -216,6 +245,7 @@ struct RegressionChecks {
         store.restore(original, to: board)
         precondition(monitor.capture(from: board, sourceApp: "Stash") == nil)
         precondition(store.entries().count == 2, "Restoring an older file must not create a new row")
+        precondition(store.entries().first?.id == original.id, "Restored file must move to the top")
         board.clearContents()
         board.setString("A new external copy", forType: .string)
         precondition(monitor.capture(from: board, sourceApp: "Fixture") == .saved)
