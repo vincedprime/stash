@@ -221,7 +221,15 @@ final class ClipboardStore {
             guard let path = entry.imagePath, let image = NSImage(contentsOf: root.appendingPathComponent(path)) else { return }
             written = pasteboard.writeObjects([image])
         }
-        if written { restoredPasteboard = (pasteboard.name, pasteboard.changeCount) }
+        if written {
+            restoredPasteboard = (pasteboard.name, pasteboard.changeCount)
+            // Restoring is our own clipboard write, so the monitor will skip it.
+            // Move the existing row forward without inserting a duplicate or
+            // changing its original source, tags, pins, or external copy count.
+            executeQuietly("UPDATE entries SET created_at = ? WHERE id = ?", bindings: [
+                .double(Date().timeIntervalSince1970), .text(entry.id.uuidString)
+            ])
+        }
     }
 
     func isRestoredPasteboard(_ pasteboard: NSPasteboard) -> Bool {

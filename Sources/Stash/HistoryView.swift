@@ -140,7 +140,7 @@ final class HistoryModel: ObservableObject {
     }
 
     func restoreSelection() { if let selectedEntry { restore(selectedEntry) } }
-    func copySelection() { if let selectedEntry { store.restore(selectedEntry) } }
+    func copySelection() { if let selectedEntry { store.restore(selectedEntry); reload() } }
     func deleteSelection() { if let selectedEntry { delete(selectedEntry) } }
     func togglePinSelection() { if let selectedEntry { togglePin(selectedEntry) } }
     func cycleFilter() {
