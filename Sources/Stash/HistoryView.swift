@@ -63,7 +63,6 @@ final class HistoryModel: ObservableObject {
         searchTask?.cancel()
         usage = store.byteUsage()
         guard isPresented else { return }
-        let startedAt = PerformanceLog.start()
         let sameSearch = loadedQuery == query && loadedFilter == filter
         let count = sameSearch ? max(Self.pageSize, entries.count) : Self.pageSize
         loadedQuery = query
@@ -73,17 +72,10 @@ final class HistoryModel: ObservableObject {
         entries = Array(page.prefix(count))
         if !entries.contains(where: { $0.id == selectedID }) { selectedID = entries.first?.id }
         else { refreshInspector() }
-        PerformanceLog.record("history.reload", startedAt: startedAt,
-                              details: "rows=\(entries.count), queryCharacters=\(query.count), storedBytes=\(usage)")
     }
 
     private func refreshInspector() {
-        let startedAt = PerformanceLog.start()
         inspectorEntry = isPresented ? selectedID.flatMap { store.entry(id: $0, textLimit: Self.textPreviewLimit) } : nil
-        if let entry = inspectorEntry {
-            PerformanceLog.record("history.inspector", startedAt: startedAt,
-                                  details: "kind=\(entry.kind.rawValue), itemBytes=\(entry.byteCount), previewLimit=\(Self.textPreviewLimit)")
-        }
     }
 
     func loadNextPage(ifLast id: UUID? = nil) {

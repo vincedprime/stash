@@ -28,7 +28,6 @@ final class ClipboardMonitor {
     func capture(from pasteboard: NSPasteboard, sourceApp: String?) -> SaveResult? {
         // Ignore only our exact write. A later copy from any app has a new count.
         guard !store.isRestoredPasteboard(pasteboard) else { return nil }
-        let startedAt = PerformanceLog.start()
         let result: SaveResult
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             result = store.saveFiles(urls, sourceApp: sourceApp)
@@ -43,8 +42,6 @@ final class ClipboardMonitor {
             result = store.saveText(link, sourceApp: sourceApp)
         }
         else { return nil }
-        PerformanceLog.record("clipboard.capture", startedAt: startedAt,
-                              details: "result=\(String(describing: result)), pasteboardTypes=\(pasteboard.types?.count ?? 0)")
         return result
     }
 
