@@ -63,6 +63,7 @@ final class HistoryModel: ObservableObject {
         searchTask?.cancel()
         usage = store.byteUsage()
         guard isPresented else { return }
+        let startedAt = PerformanceLog.start()
         let sameSearch = loadedQuery == query && loadedFilter == filter
         let count = sameSearch ? max(Self.pageSize, entries.count) : Self.pageSize
         loadedQuery = query
@@ -72,10 +73,17 @@ final class HistoryModel: ObservableObject {
         entries = Array(page.prefix(count))
         if !entries.contains(where: { $0.id == selectedID }) { selectedID = entries.first?.id }
         else { refreshInspector() }
+        PerformanceLog.record("history.reload", startedAt: startedAt,
+                              details: "rows=\(entries.count), queryCharacters=\(query.count), storedBytes=\(usage)")
     }
 
     private func refreshInspector() {
+        let startedAt = PerformanceLog.start()
         inspectorEntry = isPresented ? selectedID.flatMap { store.entry(id: $0, textLimit: Self.textPreviewLimit) } : nil
+        if let entry = inspectorEntry {
+            PerformanceLog.record("history.inspector", startedAt: startedAt,
+                                  details: "kind=\(entry.kind.rawValue), itemBytes=\(entry.byteCount), previewLimit=\(Self.textPreviewLimit)")
+        }
     }
 
     func loadNextPage(ifLast id: UUID? = nil) {
@@ -349,12 +357,10 @@ struct HistoryView: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($searchIsFocused)
                 .onSubmit { model.restoreSelection() }
-            Picker("", selection: $model.filter) {
-                ForEach(HistoryFilter.allCases) { filter in Text(filter.rawValue).tag(filter) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 320)
+            // A native segmented Picker ignores its frame on newer macOS releases
+            // and expands over the search field after re-renders, so draw the chips ourselves.
+            FilterChips(selection: $model.filter)
+                .frame(width: 340)
         }
         .controlSize(.regular)
         .padding(10)
@@ -598,5 +604,38 @@ private struct EntryTagsEditor: View {
     private func save() {
         if model.setTags(tags, for: entry) { onFinish() }
         else { error = "Could not save tags. Try again." }
+    }
+}
+
+private struct FilterChips: View {
+    @Binding var selection: HistoryFilter
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(HistoryFilter.allCases) { filter in
+                let isSelected = selection == filter
+                Button { selection = filter } label: {
+                    Text(filter.rawValue)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 22)
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .background {
+                            if isSelected {
+                                Capsule().fill(Color.accentColor)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Filter")
     }
 }
